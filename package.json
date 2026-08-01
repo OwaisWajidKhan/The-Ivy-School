@@ -2,11 +2,11 @@
   "name": "the-ivy-school",
   "version": "1.0.0",
   "private": true,
-  "description": "The Ivy School attendance system — monorepo root (Vercel deployment)",
+  "description": "The Ivy School attendance system — monorepo root. Each service builds itself via vercel.json services (frontend: Vite, backend: Express).",
   "scripts": {
-    "build": "npm --prefix backend install && npm --prefix frontend install && npm --prefix frontend run build",
     "dev": "npm --prefix frontend run dev",
-    "backend:install": "npm --prefix backend install"
+    "backend:install": "npm --prefix backend install",
+    "build:frontend": "npm --prefix frontend install && npm --prefix frontend run build"
   },
   "engines": {
     "node": ">=22"

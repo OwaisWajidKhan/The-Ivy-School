@@ -136,26 +136,51 @@ build and reverse-proxies `/api` and `/uploads` to the backend service.
 
 ## Option D — Vercel serverless (cloud)
 
-The app deploys to Vercel as one Node function (`api/index.js`) plus the
-static `frontend/dist` build. Data lives in **Turso** (libSQL over HTTPS) and
-uploads in **Vercel Blob**, so there is no local disk — functions scale to
-multiple instances safely.
+The app deploys to Vercel as **two services in one project** (Vercel
+"Services"): a Vite static frontend and the Express backend. Data lives in
+**Turso** (libSQL over HTTPS) and uploads in **Vercel Blob**, so there is no
+local disk — the backend function scales to multiple instances safely.
+
+> The multi-service layout (`frontend/` + `backend/` package.json) is exactly
+> why Vercel's import screen requires a `vercel.json` — the `services` key
+> declares both services so the Deploy button is enabled.
 
 ### What the deploy looks like
 
 ```
 repo root/
-├── api/index.js          # serverless entry -> exports the Express app
-├── vercel.json           # build + rewrites (/api/*, /uploads/* -> api/index.js)
-├── package.json          # root build script (installs + builds frontend)
-├── backend/              # Express app + routes (unchanged from local mode)
-└── frontend/dist/        # static build served by Vercel's CDN
+├── vercel.json           # services: frontend (Vite) + backend (Express), rewrites
+├── package.json          # root convenience scripts only (not built by Vercel)
+├── backend/
+│   └── src/index.js      # Express app; Vercel's "express" preset auto-detects
+│                         #   src/index.js and uses `module.exports = app`
+└── frontend/             # Vite app; framework "vite" builds dist/ automatically
 ```
 
-Routing in `vercel.json`:
-- `/api/*`  -> `api/index.js` function
-- `/uploads/*` -> `api/index.js` (resolves Vercel Blob URLs / redirects)
-- everything else -> `/index.html` (SPA fallback)
+`vercel.json`:
+
+```json
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "frontend": { "root": "frontend/", "framework": "vite",
+                  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] },
+    "backend":  { "root": "backend/",  "framework": "express" }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)",    "destination": { "service": "backend" } },
+    { "source": "/uploads/(.*)", "destination": { "service": "backend" } },
+    { "source": "/(.*)",         "destination": { "service": "frontend" } }
+  ]
+}
+```
+
+Routing:
+- `/api/*` and `/uploads/*` -> **backend** service (the Express app sees the
+  original path, so its `/api` routes work unchanged; `/uploads/*` is served
+  from Vercel Blob).
+- everything else -> **frontend** service (static build + SPA fallback to
+  `/index.html` for deep links).
 
 ### 1. Provision the serverless DB (Turso)
 
@@ -179,9 +204,11 @@ repo root with the Vercel CLI:
 vercel --prod
 ```
 
-Vercel runs the root `build` script (`npm --prefix backend install` +
-`npm --prefix frontend install` + `vite build`), publishes `frontend/dist`,
-and bundles `api/index.js` with the traced backend dependencies.
+Because `services` is present in `vercel.json`, Vercel builds each service
+independently (frontend: `vite build`; backend: install + bundle the Express
+app). If the import screen still shows the Deploy button disabled, re-import
+after pushing the `vercel.json` (the dashboard reads it from the default
+branch), or set **Framework Preset: Services** in the project settings.
 
 ### 4. Environment variables (Vercel)
 
@@ -201,7 +228,8 @@ serverless mode (Blob uploads, no `app.listen`, no local static serving).
 
 The first request on each warm instance waits for the readiness gate
 (schema + auto-seed if `users` is empty + Phase-2 reference data), so an empty
-Turso DB seeds itself. Verify:
+Turso DB seeds itself. The seed runs inside a transaction — if the very first
+request times out, it rolls back and retries on the next request. Verify:
 
 ```bash
 curl https://<your-project>.vercel.app/api/health
@@ -219,12 +247,19 @@ cd backend
 node src/index.js
 ```
 
+To also simulate **serverless mode** (Blob uploads, no `app.listen`, Blob
+`/uploads/*` route) run with `$env:VERCEL = "1"` and invoke the exported app as
+a `(req, res)` handler, or just set `VERCEL=1` and confirm the module loads:
+`node -e "console.log(typeof require('./src/index'))"`.
+
 ### Notes & limits
 
 - Vercel's function body limit (~4.5 MB) bounds multipart uploads; fine for
   photos/PDFs.
 - First cold start pays the seed/init cost; the readiness gate is memoized per
   warm instance, so subsequent requests are fast.
+- Express 5 uses `path-to-regexp` v8: bare `*` routes are invalid — the Blob
+  upload route must be `/uploads/*splat` (see `backend/src/index.js`).
 - Do not point `TURSO_DATABASE_URL` at a `file:` URL in production — use the
   managed `https://` endpoint from `turso db show --url`.
 
