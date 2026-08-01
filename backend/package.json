@@ -1,0 +1,32 @@
+{
+  "name": "school-attendance-backend",
+  "version": "1.0.0",
+  "description": "School Attendance Management System - REST API backend",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "seed": "node src/db/seed.js",
+    "build:frontend": "cd .. && npm.cmd --prefix frontend run build",
+    "bundle": "bun build src/index.js --compile --define \"process.env.IVY_PACKAGED='1'\" --outfile build/TheIvySchool.exe",
+    "package": "node scripts/package.js",
+    "dist": "npm.cmd run build:frontend && npm.cmd run bundle && npm.cmd run package"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.1",
+    "nodemailer": "^9.0.3",
+    "pdfkit": "^0.15.0",
+    "qrcode": "^1.5.4"
+  }
+}

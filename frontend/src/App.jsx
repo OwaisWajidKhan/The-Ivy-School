@@ -1,0 +1,95 @@
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useAuth } from './context/AuthContext';
+import Layout from './components/Layout';
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import Students from './pages/Students';
+import Employees from './pages/Employees';
+import Attendance from './pages/Attendance';
+import MyAttendance from './pages/MyAttendance';
+import Leaves from './pages/Leaves';
+import Payroll from './pages/Payroll';
+import Reports from './pages/Reports';
+import Devices from './pages/Devices';
+import Users from './pages/Users';
+import Holidays from './pages/Holidays';
+import Settings from './pages/Settings';
+import AuditLogs from './pages/AuditLogs';
+import GatePasses from './pages/GatePasses';
+import Cards from './pages/Cards';
+import HR from './pages/HR';
+import NotFound from './pages/NotFound';
+import Spinner from './components/Spinner';
+
+function FullPageLoader() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <Spinner size={40} />
+    </div>
+  );
+}
+
+function Protected({ children }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <FullPageLoader />;
+  if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
+  return children;
+}
+
+function Guard({ can, children }) {
+  const { user, hasPermission } = useAuth();
+  if (!user) return null;
+  const ok = can === 'any' || can.some(c => c.startsWith('!') ? !hasPermission(c.slice(1)) : hasPermission(c));
+  if (!ok) return <Navigate to="/" replace />;
+  return children;
+}
+
+function AppRoutes() {
+  const { user } = useAuth();
+  const isRole = (...roles) => roles.includes(user?.role);
+
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route
+        path="/*"
+        element={
+          <Protected>
+            <Layout>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/students" element={<Guard can={['manage_students', 'view_assigned_students', 'view_student_attendance']}><Students /></Guard>} />
+                <Route path="/employees" element={<Guard can={['manage_employees', 'view_assigned_students']}><Employees /></Guard>} />
+                <Route path="/attendance" element={
+                  <Guard can={['manage_attendance', 'view_attendance', 'view_own_attendance', 'view_student_attendance']}>
+                    {(user && (isRole('teacher', 'employee', 'parent')) && !user.permissions?.some(p => ['manage_attendance', 'view_attendance'].includes(p)))
+                      ? <MyAttendance />
+                      : <Attendance />}
+                  </Guard>
+                } />
+                <Route path="/attendance/me" element={<Guard can={['view_own_attendance']}><MyAttendance /></Guard>} />
+                <Route path="/leaves" element={<Leaves />} />
+                <Route path="/gate-passes" element={<Guard can={['manage_students', 'approve_leave', 'manage_attendance', 'view_attendance']}><GatePasses /></Guard>} />
+                <Route path="/hr" element={<Guard can={['manage_employees', 'manage_settings', 'manage_payroll', 'view_reports']}><HR /></Guard>} />
+                <Route path="/cards" element={<Guard can={['manage_devices', 'manage_attendance']}><Cards /></Guard>} />
+                <Route path="/payroll" element={<Guard can={['manage_payroll', 'generate_payroll', 'view_own_attendance']}><Payroll /></Guard>} />
+                <Route path="/reports" element={<Guard can={['view_reports', 'view_all_reports']}><Reports /></Guard>} />
+                <Route path="/devices" element={<Guard can={['manage_devices']}><Devices /></Guard>} />
+                <Route path="/users" element={<Guard can={['manage_settings', 'create_admins']}><Users /></Guard>} />
+                <Route path="/holidays" element={<Guard can={['manage_holidays']}><Holidays /></Guard>} />
+                <Route path="/settings" element={<Guard can={['manage_settings']}><Settings /></Guard>} />
+                <Route path="/audit" element={<Guard can={['view_audit_logs']}><AuditLogs /></Guard>} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Layout>
+          </Protected>
+        }
+      />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return <AppRoutes />;
+}
