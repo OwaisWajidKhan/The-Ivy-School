@@ -184,6 +184,14 @@ Routing:
 
 ### 1. Provision the serverless DB (Turso)
 
+**Easiest (no CLI):** sign in at **https://app.turso.tech** (the web console —
+`console.turso.io` is retired) → **Create Database** (name it `ivy-school`) →
+copy the database **URL** (e.g. `libsql://ivy-school-<org>.aws-<region>.turso.io`)
+→ **Generate Token**.
+
+Or with the CLI (Linux/macOS, or Windows via WSL — there is no native Windows
+Turso CLI):
+
 ```bash
 turso db create ivy-school
 turso db show ivy-school --url          # -> TURSO_DATABASE_URL
@@ -234,6 +242,23 @@ request times out, it rolls back and retries on the next request. Verify:
 ```bash
 curl https://<your-project>.vercel.app/api/health
 ```
+
+`/api/health` reports the active DB backend (`"db":"turso"` vs `"db":"local"`).
+If it returns a `configError`, a required Turso env var is missing — see
+`backend/src/index.js`.
+
+> **Seeding an empty cloud DB is slow.** Every statement is an HTTP round-trip
+> to the DB region; the full sample set took ~12 min against a
+> `aws-ap-northeast-1` DB. Before going live, seed once from a machine that has
+> the two `TURSO_*` env vars set so Vercel never has to seed under a function
+> timeout:
+>
+> ```bash
+> # from backend/
+> node -e "require('./src/db/client.js').ensureReady().then(()=>process.exit(0))"
+> ```
+>
+> Once the DB has rows, cold starts only run the fast idempotent checks.
 
 ### Local preview against a Turso database
 

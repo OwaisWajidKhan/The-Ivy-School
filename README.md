@@ -85,9 +85,14 @@ Set `JWT_SECRET` and `JWT_REFRESH_SECRET` in the environment. Database and uploa
 
 ## Deploy to Vercel (serverless)
 
-The app deploys as a single Vercel Node function plus the static frontend build.
+The app deploys to Vercel as **two services in one project** (see
+`docs/DEPLOYMENT.md` → "Option D").
 
 1. **Create a Turso database** (serverless SQLite):
+   - Web console (easiest): **https://app.turso.tech** → Create Database
+     (`ivy-school`) → copy the URL + Generate Token. The console moved here —
+     `console.turso.io` is retired. No Windows CLI exists (WSL only).
+   - Or with the CLI (Linux/macOS):
    ```bash
    turso db create ivy-school
    turso db show ivy-school --url        # -> TURSO_DATABASE_URL
@@ -96,9 +101,8 @@ The app deploys as a single Vercel Node function plus the static frontend build.
 2. **Create a Vercel Blob store** (for photo/document uploads) from the Vercel
    dashboard and copy `BLOB_READ_WRITE_TOKEN`.
 3. **Push to a Git repo** and import it in Vercel (or run `vercel` from the
-   repo root). Vercel runs the root `build` script, serves `frontend/dist`,
-   and maps `api/index.js` to the `/api` and `/uploads` routes via
-   `vercel.json`.
+   repo root). `vercel.json` declares the frontend (Vite) and backend
+   (Express) services and rewrites `/api/*` + `/uploads/*` to the backend.
 4. **Set environment variables** in Vercel:
    ```
    TURSO_DATABASE_URL=<from step 1>
@@ -109,7 +113,9 @@ The app deploys as a single Vercel Node function plus the static frontend build.
    FRONTEND_URL=https://<your-project>.vercel.app
    ```
 5. **First request auto-seeds** the empty Turso database (schema + demo data
-   + Phase-2 reference data). Health check: `https://<your-project>.vercel.app/api/health`.
+   + Phase-2 reference data). Seeding an empty cloud DB is slow (~12 min over
+   HTTPS) — seed once locally first if possible. Health check:
+   `https://<your-project>.vercel.app/api/health` (reports `"db":"turso"`).
 
 See `docs/DEPLOYMENT.md` → "Option D — Vercel serverless" for details,
 including local preview with a Turso `file:` URL.
