@@ -46,9 +46,9 @@ app.use(async (req, res, next) => {
 if (!VERCEL) {
   app.use('/uploads', express.static(config.uploadDir));
 } else {
-  app.get('/uploads/*', async (req, res, next) => {
+  app.get('/uploads/*splat', async (req, res, next) => {
     try {
-      await storageService.serveUpload(req, res, `/uploads/${req.params[0] || ''}`);
+      await storageService.serveUpload(req, res, `/uploads/${req.params.splat || ''}`);
     } catch (e) {
       next(e);
     }
