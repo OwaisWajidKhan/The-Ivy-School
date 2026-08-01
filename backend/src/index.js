@@ -33,8 +33,10 @@ app.use(express.urlencoded({ extended: true }));
 // Async readiness gate: waits for schema + auto-seed + Phase-2 reference data
 // before handling requests. Local mode also awaits ensureReady() before
 // app.listen(), so here it resolves instantly; serverless cold starts (Vercel)
-// rely on this middleware to avoid racing the one-time init.
+// rely on this middleware to avoid racing the one-time init. /api/health is
+// exempt so it can always report the DB backend / errors instead of 500ing.
 app.use(async (req, res, next) => {
+  if (req.path === '/api/health') return next();
   try {
     await ensureReady();
     next();
@@ -90,16 +92,45 @@ const routes = {
   '/api/hr': require('./routes/hr')
 };
 
+// Fail loudly when a serverless deployment has no serverless DB: Vercel's
+// function filesystem is read-only, so the local node:sqlite backend cannot
+// create its file there and every DB request would 500 with a generic error.
+if (VERCEL && !process.env.TURSO_DATABASE_URL) {
+  console.error('[CONFIG] VERCEL=1 but TURSO_DATABASE_URL is not set — ' +
+    'the local SQLite backend cannot write on Vercel. Set TURSO_DATABASE_URL ' +
+    'and TURSO_AUTH_TOKEN to a Turso (libsql) database, or /api/* will 500.');
+}
+
 for (const [mount, router] of Object.entries(routes)) {
   app.use(mount, mount.includes('auth') ? authLimiter : (req, res, next) => next(), router);
 }
 
 app.get('/api/health', async (req, res) => {
-  res.json({
-    success: true,
-    status: 'ok',
+  const { db, ensureReady } = require('./db/client');
+  const backend = db.backend();
+  let ready = false;
+  let school = null;
+  let dbError = null;
+  try {
+    await ensureReady();
+    ready = true;
+    school = await getSetting('school_name', 'School Attendance System');
+  } catch (e) {
+    dbError = String((e && e.message) || e);
+  }
+  const configError =
+    VERCEL && backend === 'local'
+      ? 'VERCEL=1 but TURSO_DATABASE_URL is not set — the local SQLite backend cannot write on Vercel. Set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN.'
+      : null;
+  res.status(ready ? 200 : 503).json({
+    success: ready,
+    status: ready ? 'ok' : 'degraded',
     time: new Date().toISOString(),
-    school: await getSetting('school_name', 'School Attendance System')
+    school,
+    db: backend,
+    vercel: VERCEL,
+    ...(configError ? { configError } : {}),
+    ...(dbError ? { dbError } : {})
   });
 });
 
