@@ -1,7 +1,7 @@
 # AGENTS.md — Project Progress Tracker
 
 > School Attendance Management System (Cloud-Based) — "The Ivy School"
-> Last updated: 2026-08-01
+> Last updated: 2026-08-02
 ## How to use
 This file tracks the current state of the build. Update the "Current status", progress checklists, and "Known issues" sections after each working session. Run commands from the `backend/` or `frontend/` directories as noted.
 
@@ -10,11 +10,36 @@ This file tracks the current state of the build. Update the "Current status", pr
 - Node v24.18.0. `better-sqlite3` fails to compile (no Python/build tools) -> **use Node's built-in `node:sqlite`** (`DatabaseSync`). No native deps allowed.
 - Keep `npm.cmd install` for any new dependency; avoid packages that need node-gyp.
 - **Bun** (for `npm run bundle`) was NOT on PATH — reinstalled to `C:\Users\owais\.bun\bin\bun.exe` (Bun 1.3.14). Add to PATH in a session with: `$env:Path = "$env:USERPROFILE\.bun\bin;$env:Path"`. Reinstall if missing via `irm bun.sh/install.ps1 | iex`.
+- **Git CLI is NOT on PATH** on this box. Use the git bundled with GitHub Desktop:
+  ```powershell
+  $env:Path = "$env:LOCALAPPDATA\GitHubDesktop\app-3.6.3\resources\app\git\cmd;$env:Path"
+  ```
+  (or `Get-ChildItem "$env:LOCALAPPDATA\GitHubDesktop" -Recurse -Filter git.exe` to find the current version).
 - Start backend detached (survives shell session):
   ```powershell
   Start-Process -FilePath node -ArgumentList 'src/index.js' -WorkingDirectory 'D:\The Ivy School\backend' -RedirectStandardOutput "$env:TEMP\opencode\backend.log" -RedirectStandardError "$env:TEMP\opencode\backend.log.err" -WindowStyle Hidden
   ```
 - Backend health check: http://localhost:5000/api/health
+
+## Git workflow (IMPORTANT — always branch, merge via PR)
+- **Never commit directly to `main`.** `main` must stay in sync with `origin/main` and only change via a reviewed pull request.
+- For every feature or bug fix, create a dedicated branch off the latest `main`:
+  ```powershell
+  git checkout main
+  git pull            # ensure up to date
+  git checkout -b feat/<short-description>      # or fix/<short-description>
+  ```
+- Commit your work on the branch with a concise message, then push:
+  ```powershell
+  git push -u origin feat/<short-description>
+  ```
+- Open a pull request into `main` (via `gh pr create` or the GitHub web UI), get it reviewed, then **merge through the PR** (prefer "Squash and merge"). After merge, clean up:
+  ```powershell
+  git checkout main
+  git pull
+  git branch -d feat/<short-description>
+  ```
+- Keep the working tree clean on `main`: never leave uncommitted changes or stray test artifacts (`test.db`, `test-turso.db`, `data/*.db`) in the repo.
 
 ## Project structure
 ```
@@ -102,6 +127,16 @@ D:\The Ivy School\
 - [x] **Toast notifications**: new `frontend/src/context/ToastContext.jsx` (`useToast()` → `success/error/info`, auto-dismiss, slide-in animation, wired in `main.jsx`) — success toasts added to all create/update/delete/approve/status handlers across 13 pages; legacy `alert(...)` error popups replaced with `toast.error(...)`
 - [x] **Bug fix — `useFetch` array destructuring**: pages destructured the hook's object return as an array (`const [x] = useFetch(...)`) → "X is not a function or its return value is not iterable"; fixed to `const { data: x } = useFetch(...)` in Students, Employees, Cards, GatePasses
 - [x] Repackaged + verified: new bundle + `build/TheIvySchool-Portable.zip` rebuilt after each change
+
+### Serverless (Vercel + Turso + Blob) (COMPLETE — local + Turso verified)
+- [x] **Async DB facade** (`backend/src/db/client.js`): unified `db.prepare(sql).get/all/run` returning Promises; local backend uses `node:sqlite`, serverless backend uses `@libsql/client` over HTTPS when `TURSO_DATABASE_URL` is set
+- [x] **Turso fixes**: `exec` splits multi-statement DDL inside libsql transactions (tx executes one statement per call); `get`/`all` added to the facade; bigint→Number normalization
+- [x] **Await-precedence audit**: fixed `(await db.prepare(...).get()).c` (and `.all(...).map(...)`) bugs across admin, attendance, cards, dashboard, employees, gatePasses, leaves, notifications, reports, students; payrollService `countWorkingDays`
+- [x] **Named-statement `.run()` awaits**: fixed `const info = insert.run(...)` (was a Promise → `info.lastInsertRowid` undefined) in `routes/students.js` + `routes/employees.js` — this fixed the student photo-create 500
+- [x] **Uploads → Vercel Blob**: students/employees/leaves/hr migrated from multer diskStorage to `memoryStorage` + `storageService.uploadBuffer` (photos → `photos`, docs → `documents`); deletes call `storageService.deleteUpload`; `/uploads/*` served from Blob (redirect) on Vercel
+- [x] **Readiness middleware**: added async `ensureReady()` gate in `backend/src/index.js` so serverless cold starts wait for schema + auto-seed + Phase-2 reference data (local mode already awaits before listen)
+- [x] **Serverless entry**: `api/index.js` exports the Express app; `vercel.json` (build = root `npm run build`, output = `frontend/dist`, rewrites `/api/*` + `/uploads/*` → `api/index.js`, SPA fallback to `/index.html`); root `package.json` build script installs backend + frontend then builds
+- [x] **Verified**: local smoke (health/login/dashboard/students), full upload suite (student photo create/GET/update, employee create+update, HR doc, leave doc all 201/200), Turso `file:` URL end-to-end (auto-seed, health, login, dashboard, scan, students) — all green after the middleware change
 
 ### Remaining (not started)
 - [x] Docker config (Dockerfiles + docker-compose + nginx) + deployment guide

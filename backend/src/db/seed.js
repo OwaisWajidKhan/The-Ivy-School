@@ -18,50 +18,51 @@ function hashPassword(pw) {
 
 // Idempotent Phase 2 reference data (designations, subjects, teacher assignments,
 // branding settings). Safe to run on every startup so existing DBs get upgraded too.
-function ensurePhase2ReferenceData() {
+async function ensurePhase2ReferenceData() {
   const deptIds = {};
-  for (const d of db.prepare('SELECT * FROM departments').all()) deptIds[d.name] = d.id;
+  for (const d of await db.prepare('SELECT * FROM departments').all()) deptIds[d.name] = d.id;
 
   const branding = {
     school_logo: '', school_address: '', school_contact_email: '',
     school_contact_phone: '', school_footer_text: '© The Ivy School', school_timezone: 'UTC'
   };
   for (const [k, v] of Object.entries(branding)) {
-    if (!db.prepare('SELECT key FROM settings WHERE key = ?').get(k)) setSetting(k, v);
+    if (!await db.prepare('SELECT key FROM settings WHERE key = ?').get(k)) await setSetting(k, v);
   }
 
-  const insertDesignation = db.prepare('INSERT OR IGNORE INTO designations (name, department_id, description) VALUES (?,?,?)');
+  const insertDesignation = await db.prepare('INSERT OR IGNORE INTO designations (name, department_id, description) VALUES (?,?,?)');
   const teachDept = deptIds['Teaching Staff'];
-  insertDesignation.run('Senior Teacher', teachDept, 'Lead teacher');
-  insertDesignation.run('Teacher', teachDept, 'Class teacher');
-  insertDesignation.run('Subject Specialist', teachDept, 'Subject expert');
-  insertDesignation.run('Office Manager', deptIds['Administration'], 'Office administration');
-  insertDesignation.run('Security Guard', deptIds['Security Staff'], 'Security staff');
-  insertDesignation.run('Housekeeper', deptIds['Domestic Staff'], 'Domestic staff');
-  insertDesignation.run('Bus Driver', deptIds['Transport'], 'Transport staff');
+  await insertDesignation.run('Senior Teacher', teachDept, 'Lead teacher');
+  await insertDesignation.run('Teacher', teachDept, 'Class teacher');
+  await insertDesignation.run('Subject Specialist', teachDept, 'Subject expert');
+  await insertDesignation.run('Office Manager', deptIds['Administration'], 'Office administration');
+  await insertDesignation.run('Security Guard', deptIds['Security Staff'], 'Security staff');
+  await insertDesignation.run('Housekeeper', deptIds['Domestic Staff'], 'Domestic staff');
+  await insertDesignation.run('Bus Driver', deptIds['Transport'], 'Transport staff');
   const designations = {};
-  for (const d of db.prepare('SELECT * FROM designations').all()) designations[d.name] = d.id;
+  for (const d of await db.prepare('SELECT * FROM designations').all()) designations[d.name] = d.id;
 
-  const insertSubject = db.prepare('INSERT OR IGNORE INTO subjects (name, code, description) VALUES (?,?,?)');
+  const insertSubject = await db.prepare('INSERT OR IGNORE INTO subjects (name, code, description) VALUES (?,?,?)');
   const subjectsList = [['English', 'ENG', 'English language and literature'], ['Mathematics', 'MATH', 'Mathematics'], ['Science', 'SCI', 'General science'], ['Urdu', 'URD', 'Urdu'], ['Islamic Studies', 'ISL', 'Islamic studies'], ['Computer Science', 'CS', 'Computer science']];
-  for (const s of subjectsList) insertSubject.run(s[0], s[1], s[2]);
+  for (const s of subjectsList) await insertSubject.run(s[0], s[1], s[2]);
   const subjectIds = {};
-  for (const s of db.prepare('SELECT * FROM subjects').all()) subjectIds[s.name] = s.id;
+  for (const s of await db.prepare('SELECT * FROM subjects').all()) subjectIds[s.name] = s.id;
 
-  const assignInsert = db.prepare('INSERT OR IGNORE INTO teacher_assignments (teacher_id, subject_id, class_id, section_id) VALUES (?,?,?,?)');
-  const teachRows = db.prepare("SELECT * FROM employees WHERE designation LIKE '%Teacher%'").all();
-  const allClasses = db.prepare('SELECT * FROM classes ORDER BY id LIMIT 6').all();
-  const allSections = db.prepare('SELECT * FROM sections').all();
-  teachRows.forEach((t, ti) => {
+  const assignInsert = await db.prepare('INSERT OR IGNORE INTO teacher_assignments (teacher_id, subject_id, class_id, section_id) VALUES (?,?,?,?)');
+  const teachRows = await db.prepare("SELECT * FROM employees WHERE designation LIKE '%Teacher%'").all();
+  const allClasses = await db.prepare('SELECT * FROM classes ORDER BY id LIMIT 6').all();
+  const allSections = await db.prepare('SELECT * FROM sections').all();
+  for (let ti = 0; ti < teachRows.length; ti++) {
+    const t = teachRows[ti];
     const subjectName = subjectsList[ti % subjectsList.length][0];
     const cls = allClasses[ti % allClasses.length];
     const sec = allSections.find(s => s.class_id === cls.id) || allSections[0];
-    assignInsert.run(t.id, subjectIds[subjectName], cls.id, sec ? sec.id : null);
-  });
+    await assignInsert.run(t.id, subjectIds[subjectName], cls.id, sec ? sec.id : null);
+  }
 
   for (const t of teachRows) {
     const ds = designations[t.designation === 'Senior Teacher' ? 'Senior Teacher' : 'Teacher'];
-    if (ds) db.prepare('UPDATE employees SET designation_id = ? WHERE id = ?').run(ds, t.id);
+    if (ds) await db.prepare('UPDATE employees SET designation_id = ? WHERE id = ?').run(ds, t.id);
   }
 }
 
@@ -87,20 +88,20 @@ const perm = {
   parent: ['view_student_attendance']
 };
 
-function seed() {
+async function seed() {
   console.log('Seeding database...');
 
-  db.exec('BEGIN');
+  await db.exec('BEGIN');
 
-  const insertRole = db.prepare('INSERT OR IGNORE INTO roles (name, description, permissions) VALUES (?, ?, ?)');
+  const insertRole = await db.prepare('INSERT OR IGNORE INTO roles (name, description, permissions) VALUES (?, ?, ?)');
   for (const [name, perms] of Object.entries(perm)) {
-    insertRole.run(name, `${name} role`, JSON.stringify(perms));
+    await insertRole.run(name, `${name} role`, JSON.stringify(perms));
   }
   const roles = {};
-  for (const r of db.prepare('SELECT * FROM roles').all()) roles[r.name] = r.id;
+  for (const r of await db.prepare('SELECT * FROM roles').all()) roles[r.name] = r.id;
 
   // Departments
-  const insertDept = db.prepare('INSERT OR IGNORE INTO departments (name, description) VALUES (?, ?)');
+  const insertDept = await db.prepare('INSERT OR IGNORE INTO departments (name, description) VALUES (?, ?)');
   const depts = [
     ['Teaching Staff', 'Teachers and academic staff'],
     ['Administration', 'School administration and management'],
@@ -108,45 +109,45 @@ function seed() {
     ['Security Staff', 'Security guards'],
     ['Transport', 'Drivers and transport staff']
   ];
-  for (const d of depts) insertDept.run(d[0], d[1]);
+  for (const d of depts) await insertDept.run(d[0], d[1]);
   const deptIds = {};
-  for (const d of db.prepare('SELECT * FROM departments').all()) deptIds[d.name] = d.id;
+  for (const d of await db.prepare('SELECT * FROM departments').all()) deptIds[d.name] = d.id;
 
   // Classes & sections
-  const insertClass = db.prepare('INSERT OR IGNORE INTO classes (name, description) VALUES (?, ?)');
-  for (let c = 1; c <= 10; c++) insertClass.run(`Class ${c}`, `Grade ${c}`);
+  const insertClass = await db.prepare('INSERT OR IGNORE INTO classes (name, description) VALUES (?, ?)');
+  for (let c = 1; c <= 10; c++) await insertClass.run(`Class ${c}`, `Grade ${c}`);
   const classes = {};
-  for (const c of db.prepare('SELECT * FROM classes').all()) classes[c.name] = c.id;
+  for (const c of await db.prepare('SELECT * FROM classes').all()) classes[c.name] = c.id;
 
-  const insertSection = db.prepare('INSERT OR IGNORE INTO sections (class_id, name) VALUES (?, ?)');
+  const insertSection = await db.prepare('INSERT OR IGNORE INTO sections (class_id, name) VALUES (?, ?)');
   for (const c of Object.values(classes)) {
-    insertSection.run(c, 'A');
-    insertSection.run(c, 'B');
+    await insertSection.run(c, 'A');
+    await insertSection.run(c, 'B');
   }
 
   // Shifts
-  db.prepare('INSERT OR IGNORE INTO shifts (name, start_time, end_time, grace_minutes, half_day_threshold_hours) VALUES (?,?,?,?,?)')
+  await db.prepare('INSERT OR IGNORE INTO shifts (name, start_time, end_time, grace_minutes, half_day_threshold_hours) VALUES (?,?,?,?,?)')
     .run('Morning', '08:00', '15:00', 15, 4);
-  db.prepare('INSERT OR IGNORE INTO shifts (name, start_time, end_time, grace_minutes, half_day_threshold_hours) VALUES (?,?,?,?,?)')
+  await db.prepare('INSERT OR IGNORE INTO shifts (name, start_time, end_time, grace_minutes, half_day_threshold_hours) VALUES (?,?,?,?,?)')
     .run('Evening', '14:00', '22:00', 15, 4);
   const shifts = {};
-  for (const s of db.prepare('SELECT * FROM shifts').all()) shifts[s.name] = s.id;
+  for (const s of await db.prepare('SELECT * FROM shifts').all()) shifts[s.name] = s.id;
 
   // Devices
-  const insertDevice = db.prepare('INSERT OR IGNORE INTO devices (device_name, device_id, location, status, last_sync_time) VALUES (?,?,?,?,?)');
-  insertDevice.run('Main Gate Reader', 'DEV-MAIN-01', 'Main Entrance', 'online', iso(new Date()));
-  insertDevice.run('Staff Gate Reader', 'DEV-STAFF-01', 'Staff Entrance', 'online', iso(new Date()));
-  insertDevice.run('Transport Depot', 'DEV-BUS-01', 'Bus Stand', 'offline', iso(new Date(Date.now() - 86400000)));
+  const insertDevice = await db.prepare('INSERT OR IGNORE INTO devices (device_name, device_id, location, status, last_sync_time) VALUES (?,?,?,?,?)');
+  await insertDevice.run('Main Gate Reader', 'DEV-MAIN-01', 'Main Entrance', 'online', iso(new Date()));
+  await insertDevice.run('Staff Gate Reader', 'DEV-STAFF-01', 'Staff Entrance', 'online', iso(new Date()));
+  await insertDevice.run('Transport Depot', 'DEV-BUS-01', 'Bus Stand', 'offline', iso(new Date(Date.now() - 86400000)));
 
   // Users (create admins first)
-  const insertUser = db.prepare('INSERT INTO users (username, email, password_hash, role_id, person_type, person_id) VALUES (?,?,?,?,?,?)');
+  const insertUser = await db.prepare('INSERT INTO users (username, email, password_hash, role_id, person_type, person_id) VALUES (?,?,?,?,?,?)');
   const adminPw = hashPassword('Admin@123');
-  const superAdminId = insertUser.run('superadmin', 'superadmin@school.com', adminPw, roles.super_admin, 'admin', null).lastInsertRowid;
-  const schoolAdminId = insertUser.run('admin', 'admin@school.com', adminPw, roles.school_admin, 'admin', null).lastInsertRowid;
-  const hrUserId = insertUser.run('hr', 'hr@school.com', adminPw, roles.hr, 'admin', null).lastInsertRowid;
+  const superAdminId = await insertUser.run('superadmin', 'superadmin@school.com', adminPw, roles.super_admin, 'admin', null).lastInsertRowid;
+  const schoolAdminId = await insertUser.run('admin', 'admin@school.com', adminPw, roles.school_admin, 'admin', null).lastInsertRowid;
+  const hrUserId = await insertUser.run('hr', 'hr@school.com', adminPw, roles.hr, 'admin', null).lastInsertRowid;
 
   // Students
-  const insertStudent = db.prepare(`
+  const insertStudent = await db.prepare(`
     INSERT INTO students (student_id, admission_number, rfid_uid, full_name, father_name, class_id, section_id, roll_number, dob, gender, phone, parent_contact, address, status)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `);
@@ -161,7 +162,7 @@ function seed() {
     const name = `${firstNames[i % firstNames.length]} ${lastNames[i % lastNames.length]}`;
     const gender = i % 2 === 0 ? 'Female' : 'Male';
     const uid = `STU${String(sId).padStart(6, '0')}`;
-    const info = insertStudent.run(
+    const info = await insertStudent.run(
       `S-${String(sId).padStart(4, '0')}`,
       `ADM-${String(sId).padStart(5, '0')}`,
       uid,
@@ -178,16 +179,16 @@ function seed() {
       'active'
     );
     // fix section properly
-    const sec = db.prepare('SELECT id FROM sections WHERE class_id = ? AND name = ?').get(classes[cls], section);
-    db.prepare('UPDATE students SET section_id = ? WHERE id = ?').run(sec.id, info.lastInsertRowid);
-    db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
+    const sec = await db.prepare('SELECT id FROM sections WHERE class_id = ? AND name = ?').get(classes[cls], section);
+    await db.prepare('UPDATE students SET section_id = ? WHERE id = ?').run(sec.id, info.lastInsertRowid);
+    await db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
       .run(uid, 'student', info.lastInsertRowid, iso(new Date()), 'active');
     studentIds.push(info.lastInsertRowid);
     sId++;
   }
 
   // Employees
-  const insertEmployee = db.prepare(`
+  const insertEmployee = await db.prepare(`
     INSERT INTO employees (employee_id, rfid_uid, full_name, cnic, mobile, department_id, designation, joining_date, salary, shift_id, working_hours, overtime_rate, leave_balance, status)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `);
@@ -206,50 +207,50 @@ function seed() {
   for (const e of empDefs) {
     const deptId = deptIds[e[5]];
     const shiftId = shifts[e[8]];
-    const info = insertEmployee.run(e[0], e[1], e[2], e[3], e[4], deptId, e[6], '2019-01-15', e[7], shiftId, e[9], e[10], e[11], 'active');
-    db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
+    const info = await insertEmployee.run(e[0], e[1], e[2], e[3], e[4], deptId, e[6], '2019-01-15', e[7], shiftId, e[9], e[10], e[11], 'active');
+    await db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
       .run(e[1], 'employee', info.lastInsertRowid, iso(new Date()), 'active');
     employeeIds.push(info.lastInsertRowid);
   }
 
   // Teacher users with linked person
-  const teachers = db.prepare('SELECT * FROM employees WHERE designation LIKE ?').all('%Teacher%');
+  const teachers = await db.prepare('SELECT * FROM employees WHERE designation LIKE ?').all('%Teacher%');
   for (const t of teachers.slice(0, 3)) {
     const uname = `teacher_${t.id}`;
-    if (!db.prepare('SELECT id FROM users WHERE username = ?').get(uname)) {
-      insertUser.run(uname, `${uname}@school.com`, hashPassword('Teacher@123'), roles.teacher, 'employee', t.id);
+    if (!await db.prepare('SELECT id FROM users WHERE username = ?').get(uname)) {
+      await insertUser.run(uname, `${uname}@school.com`, hashPassword('Teacher@123'), roles.teacher, 'employee', t.id);
     }
   }
   // One generic employee user
-  const someEmp = db.prepare('SELECT * FROM employees WHERE designation = ?').get('Security Guard');
-  insertUser.run('emp1', 'emp1@school.com', hashPassword('Emp@123'), roles.employee, 'employee', someEmp.id);
+  const someEmp = await db.prepare('SELECT * FROM employees WHERE designation = ?').get('Security Guard');
+  await insertUser.run('emp1', 'emp1@school.com', hashPassword('Emp@123'), roles.employee, 'employee', someEmp.id);
   // Parent user
-  const someStudent = db.prepare('SELECT * FROM students ORDER BY id LIMIT 1').get();
-  insertUser.run('parent1', 'parent1@school.com', hashPassword('Parent@123'), roles.parent, 'student', someStudent.id);
+  const someStudent = await db.prepare('SELECT * FROM students ORDER BY id LIMIT 1').get();
+  await insertUser.run('parent1', 'parent1@school.com', hashPassword('Parent@123'), roles.parent, 'student', someStudent.id);
 
   // Holidays for this & next month
-  const insertHoliday = db.prepare('INSERT OR IGNORE INTO holidays (name, date, type, description) VALUES (?,?,?,?)');
+  const insertHoliday = await db.prepare('INSERT OR IGNORE INTO holidays (name, date, type, description) VALUES (?,?,?,?)');
   const now = new Date();
-  insertHoliday.run('Independence Day', dateStr(new Date(now.getFullYear(), 7, 14)), 'Public', 'National holiday');
-  insertHoliday.run('Labour Day', dateStr(new Date(now.getFullYear(), 4, 1)), 'Public', 'International workers day');
+  await insertHoliday.run('Independence Day', dateStr(new Date(now.getFullYear(), 7, 14)), 'Public', 'National holiday');
+  await insertHoliday.run('Labour Day', dateStr(new Date(now.getFullYear(), 4, 1)), 'Public', 'International workers day');
 
   // Settings
-  setSetting('school_name', 'The Ivy School');
-  setSetting('school_tagline', 'Excellence in Education');
-  setSetting('school_logo', '');
-  setSetting('school_address', '');
-  setSetting('school_contact_email', '');
-  setSetting('school_contact_phone', '');
-  setSetting('school_footer_text', '© The Ivy School');
-  setSetting('school_timezone', 'UTC');
-  setSetting('duplicate_scan_window_sec', String(config.duplicateScanWindowSec));
-  setSetting('school_start_time', '08:00');
-  setSetting('school_end_time', '15:00');
-  setSetting('half_day_threshold_hours', '4');
-  setSetting('late_grace_minutes', '15');
+  await setSetting('school_name', 'The Ivy School');
+  await setSetting('school_tagline', 'Excellence in Education');
+  await setSetting('school_logo', '');
+  await setSetting('school_address', '');
+  await setSetting('school_contact_email', '');
+  await setSetting('school_contact_phone', '');
+  await setSetting('school_footer_text', '© The Ivy School');
+  await setSetting('school_timezone', 'UTC');
+  await setSetting('duplicate_scan_window_sec', String(config.duplicateScanWindowSec));
+  await setSetting('school_start_time', '08:00');
+  await setSetting('school_end_time', '15:00');
+  await setSetting('half_day_threshold_hours', '4');
+  await setSetting('late_grace_minutes', '15');
 
   // Phase 2: designations, subjects, teacher assignments
-  ensurePhase2ReferenceData();
+  await ensurePhase2ReferenceData();
 
   // Sample attendance for last 20 working days + today
   const personPool = [
@@ -258,11 +259,11 @@ function seed() {
   ];
   const nowIso = iso(new Date());
 
-  const insertSummary = db.prepare(`
+  const insertSummary = await db.prepare(`
     INSERT INTO attendance_summary (person_type, person_id, date, in_time, out_time, status, working_hours, overtime_hours, late_minutes, early_exit_minutes)
     VALUES (?,?,?,?,?,?,?,?,?,?)
   `);
-  const insertLog = db.prepare(`
+  const insertLog = await db.prepare(`
     INSERT INTO attendance_logs (person_type, person_id, device_id, location, direction, scan_time, date, raw_uid)
     VALUES (?,?,?,?,?,?,?,?)
   `);
@@ -292,9 +293,9 @@ function seed() {
       if (isLate) status = 'late';
       if (isHalf) status = 'half_day';
       const lateMin = isLate ? Math.max(0, Math.floor((inHr - 8.0) * 60)) : 0;
-      insertSummary.run(ptype, pid, ds, inTime, outTime, status, wh, 0, lateMin, 0);
-      insertLog.run(ptype, pid, ptype === 'student' ? 1 : 2, ptype === 'student' ? 'Main Entrance' : 'Staff Entrance', 'IN', `${ds} ${inTime}:00`, ds, ptype === 'student' ? `STU${String(pid).padStart(6, '0')}` : `EMP${String(pid).padStart(6, '0')}`);
-      insertLog.run(ptype, pid, ptype === 'student' ? 1 : 2, ptype === 'student' ? 'Main Entrance' : 'Staff Entrance', 'OUT', `${ds} ${outTime}:00`, ds, ptype === 'student' ? `STU${String(pid).padStart(6, '0')}` : `EMP${String(pid).padStart(6, '0')}`);
+      await insertSummary.run(ptype, pid, ds, inTime, outTime, status, wh, 0, lateMin, 0);
+      await insertLog.run(ptype, pid, ptype === 'student' ? 1 : 2, ptype === 'student' ? 'Main Entrance' : 'Staff Entrance', 'IN', `${ds} ${inTime}:00`, ds, ptype === 'student' ? `STU${String(pid).padStart(6, '0')}` : `EMP${String(pid).padStart(6, '0')}`);
+      await insertLog.run(ptype, pid, ptype === 'student' ? 1 : 2, ptype === 'student' ? 'Main Entrance' : 'Staff Entrance', 'OUT', `${ds} ${outTime}:00`, ds, ptype === 'student' ? `STU${String(pid).padStart(6, '0')}` : `EMP${String(pid).padStart(6, '0')}`);
     }
   }
 
@@ -312,11 +313,11 @@ function seed() {
     const inTime = `${String(inH).padStart(2, '0')}:${String(inM).padStart(2, '0')}`;
     const lateMin = inH >= 8 ? (inH - 8) * 60 + inM : 0;
     const status = lateMin > 15 ? 'late' : 'present';
-    insertSummary.run(ptype, pid, today, inTime, null, status, 0, 0, lateMin, 0);
-    insertLog.run(ptype, pid, ptype === 'student' ? 1 : 2, ptype === 'student' ? 'Main Entrance' : 'Staff Entrance', 'IN', `${today} ${inTime}:00`, today, ptype === 'student' ? `STU${String(pid).padStart(6, '0')}` : `EMP${String(pid).padStart(6, '0')}`);
+    await insertSummary.run(ptype, pid, today, inTime, null, status, 0, 0, lateMin, 0);
+    await insertLog.run(ptype, pid, ptype === 'student' ? 1 : 2, ptype === 'student' ? 'Main Entrance' : 'Staff Entrance', 'IN', `${today} ${inTime}:00`, today, ptype === 'student' ? `STU${String(pid).padStart(6, '0')}` : `EMP${String(pid).padStart(6, '0')}`);
   }
 
-  db.exec('COMMIT');
+  await db.exec('COMMIT');
   console.log('Seed complete.');
   console.log('Super Admin : superadmin / Admin@123');
   console.log('School Admin: admin / Admin@123');
@@ -330,6 +331,5 @@ module.exports = seed;
 module.exports.ensurePhase2ReferenceData = ensurePhase2ReferenceData;
 
 if (require.main === module) {
-  seed();
-  process.exit(0);
+  seed().catch(e => { console.error(e); process.exit(1); });
 }
