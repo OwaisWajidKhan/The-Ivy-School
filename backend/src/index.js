@@ -5,8 +5,12 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 const config = require('./config');
-const { db, getSetting } = require('./db/schema');
+const { getSetting } = require('./db/schema');
+const { ensureReady } = require('./db/client');
+const storageService = require('./services/storageService');
 const errorHandler = require('./middleware/errorHandler');
+
+const VERCEL = process.env.VERCEL === '1';
 
 // In packaged (hidden-window) mode, mirror console output to a log file for support.
 if (config.packaged) {
@@ -18,20 +22,6 @@ if (config.packaged) {
   });
 }
 
-// Auto-seed on first run (empty database) so the packaged exe works with no seed step.
-try {
-  const row = db.prepare('SELECT COUNT(*) AS c FROM users').get();
-  if (!row || row.c === 0) {
-    console.log('Empty database detected — seeding...');
-    require('./db/seed')();
-  } else {
-    // Upgrade existing databases with Phase 2 reference data (idempotent).
-    require('./db/seed').ensurePhase2ReferenceData();
-  }
-} catch (e) {
-  console.log('Seed check skipped:', e.message);
-}
-
 const app = express();
 
 app.set('trust proxy', 1);
@@ -40,7 +30,30 @@ app.use(cors({ origin: config.frontendUrl, credentials: true }));
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-app.use('/uploads', express.static(config.uploadDir));
+// Async readiness gate: waits for schema + auto-seed + Phase-2 reference data
+// before handling requests. Local mode also awaits ensureReady() before
+// app.listen(), so here it resolves instantly; serverless cold starts (Vercel)
+// rely on this middleware to avoid racing the one-time init.
+app.use(async (req, res, next) => {
+  try {
+    await ensureReady();
+    next();
+  } catch (e) {
+    next(e);
+  }
+});
+
+if (!VERCEL) {
+  app.use('/uploads', express.static(config.uploadDir));
+} else {
+  app.get('/uploads/*', async (req, res, next) => {
+    try {
+      await storageService.serveUpload(req, res, `/uploads/${req.params[0] || ''}`);
+    } catch (e) {
+      next(e);
+    }
+  });
+}
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -77,23 +90,22 @@ const routes = {
   '/api/hr': require('./routes/hr')
 };
 
-for (const [path, router] of Object.entries(routes)) {
-  app.use(path, path.includes('auth') ? authLimiter : (req, res, next) => next(), router);
+for (const [mount, router] of Object.entries(routes)) {
+  app.use(mount, mount.includes('auth') ? authLimiter : (req, res, next) => next(), router);
 }
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   res.json({
     success: true,
     status: 'ok',
     time: new Date().toISOString(),
-    school: getSetting('school_name', 'School Attendance System')
+    school: await getSetting('school_name', 'School Attendance System')
   });
 });
 
 // Serve the built frontend (single-process app) when dist exists.
-// index.html is served WITHOUT cache so updates are picked up immediately;
-// hashed assets (assets/*) get a long cache lifetime.
-if (fs.existsSync(config.frontendDir)) {
+// Not used on Vercel — the static build is served by Vercel's CDN instead.
+if (!VERCEL && fs.existsSync(config.frontendDir)) {
   app.use(express.static(config.frontendDir, { maxAge: '1d', index: false }));
   app.get(/^\/(?!api\/|uploads\/).*/, (req, res) => {
     res.set('Cache-Control', 'no-cache, must-revalidate');
@@ -105,10 +117,18 @@ if (fs.existsSync(config.frontendDir)) {
 app.use(errorHandler.notFound);
 app.use(errorHandler);
 
-app.listen(config.port, () => {
-  console.log(`School Attendance API running on http://localhost:${config.port}`);
-  console.log(`School: ${getSetting('school_name', 'School Attendance System')}`);
-  console.log(`Health check: http://localhost:${config.port}/api/health`);
-});
+// Long-running processes (dev, Docker, packaged exe) start the HTTP server here.
+// Vercel ignores this branch; the api/ serverless entry awaits ensureReady() itself.
+if (!VERCEL) {
+  ensureReady().then(() => {
+    app.listen(config.port, () => {
+      console.log(`School Attendance API running on http://localhost:${config.port}`);
+      console.log(`Health check: http://localhost:${config.port}/api/health`);
+    });
+  }).catch((e) => {
+    console.error('Startup failed:', e);
+    process.exit(1);
+  });
+}
 
 module.exports = app;

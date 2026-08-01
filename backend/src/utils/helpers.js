@@ -40,9 +40,9 @@ function hhmmToMinutes(hhmm) {
   return (h || 0) * 60 + (m || 0);
 }
 
-function audit(user, action, entityType = null, entityId = null, details = null, ip = null) {
+async function audit(user, action, entityType = null, entityId = null, details = null, ip = null) {
   try {
-    db.prepare(
+    await db.prepare(
       'INSERT INTO audit_logs (user_id, username, action, entity_type, entity_id, details, ip) VALUES (?,?,?,?,?,?,?)'
     ).run(
       user ? user.id : null,

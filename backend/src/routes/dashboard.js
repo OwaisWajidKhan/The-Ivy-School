@@ -6,8 +6,8 @@ const { ok, fail, todayStr } = require('../utils/helpers');
 
 router.use(requireAuth);
 
-function statusCounts(personType, date) {
-  const rows = db.prepare(
+async function statusCounts(personType, date) {
+  const rows = await db.prepare(
     'SELECT status, COUNT(*) AS c FROM attendance_summary WHERE person_type = ? AND date = ? GROUP BY status'
   ).all(personType, date);
   const map = { present: 0, late: 0, absent: 0, half_day: 0, early_exit: 0, overtime: 0 };
@@ -16,20 +16,20 @@ function statusCounts(personType, date) {
 }
 
 // Full dashboard
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const date = todayStr();
-  const totalStudents = db.prepare("SELECT COUNT(*) AS c FROM students WHERE status = 'active'").get().c;
-  const totalEmployees = db.prepare("SELECT COUNT(*) AS c FROM employees WHERE status = 'active'").get().c;
-  const scannedStudents = db.prepare("SELECT COUNT(*) AS c FROM attendance_summary WHERE person_type='student' AND date = ?").get(date).c;
-  const scannedEmployees = db.prepare("SELECT COUNT(*) AS c FROM attendance_summary WHERE person_type='employee' AND date = ?").get(date).c;
+  const totalStudents = (await db.prepare("SELECT COUNT(*) AS c FROM students WHERE status = 'active'").get()).c;
+  const totalEmployees = (await db.prepare("SELECT COUNT(*) AS c FROM employees WHERE status = 'active'").get()).c;
+  const scannedStudents = (await db.prepare("SELECT COUNT(*) AS c FROM attendance_summary WHERE person_type='student' AND date = ?").get(date)).c;
+  const scannedEmployees = (await db.prepare("SELECT COUNT(*) AS c FROM attendance_summary WHERE person_type='employee' AND date = ?").get(date)).c;
 
-  const studentStatus = statusCounts('student', date);
-  const employeeStatus = statusCounts('employee', date);
+  const studentStatus = await statusCounts('student', date);
+  const employeeStatus = await statusCounts('employee', date);
 
-  const activeReaders = db.prepare("SELECT COUNT(*) AS c FROM devices WHERE status='online'").get().c;
-  const totalDevices = db.prepare("SELECT COUNT(*) AS c FROM devices").get().c;
+  const activeReaders = (await db.prepare("SELECT COUNT(*) AS c FROM devices WHERE status='online'").get()).c;
+  const totalDevices = (await db.prepare("SELECT COUNT(*) AS c FROM devices").get()).c;
 
-  const recentScans = db.prepare(
+  const recentScans = await db.prepare(
     `SELECT l.*, CASE WHEN l.person_type='student' THEN st.full_name ELSE em.full_name END AS full_name
      FROM attendance_logs l
      LEFT JOIN students st ON st.id = l.person_id AND l.person_type='student'
@@ -37,14 +37,14 @@ router.get('/', (req, res) => {
      WHERE l.date = ? ORDER BY l.id DESC LIMIT 15`
   ).all(date);
 
-  const pendingLeaves = db.prepare("SELECT COUNT(*) AS c FROM leaves WHERE status='pending'").get().c;
-  const pendingGatePasses = db.prepare("SELECT COUNT(*) AS c FROM gate_passes WHERE status='pending'").get().c;
-  const unreadNotifications = db.prepare("SELECT COUNT(*) AS c FROM notifications WHERE read = 0").get().c;
-  const pendingPayroll = db.prepare(
+  const pendingLeaves = (await db.prepare("SELECT COUNT(*) AS c FROM leaves WHERE status='pending'").get()).c;
+  const pendingGatePasses = (await db.prepare("SELECT COUNT(*) AS c FROM gate_passes WHERE status='pending'").get()).c;
+  const unreadNotifications = (await db.prepare("SELECT COUNT(*) AS c FROM notifications WHERE read = 0").get()).c;
+  const pendingPayroll = (await db.prepare(
     "SELECT COUNT(*) AS c FROM employees e WHERE e.status='active' AND NOT EXISTS (SELECT 1 FROM payroll p WHERE p.employee_id=e.id AND p.month=? AND p.year=?)"
-  ).get(new Date().getMonth() + 1, new Date().getFullYear()).c;
+  ).get(new Date().getMonth() + 1, new Date().getFullYear())).c;
 
-  const timeline = db.prepare(
+  const timeline = await db.prepare(
     `SELECT a.*, CASE WHEN a.person_type='student' THEN st.full_name ELSE em.full_name END AS full_name
      FROM attendance_summary a
      LEFT JOIN students st ON st.id = a.person_id AND a.person_type='student'
@@ -53,7 +53,7 @@ router.get('/', (req, res) => {
   ).all(date);
 
   // Pending gate passes list (for quick approve)
-  const pendingGatePassRows = db.prepare(
+  const pendingGatePassRows = await db.prepare(
     `SELECT gp.id, gp.pass_no, gp.reason, gp.exit_date, s.full_name, s.student_id, c.name AS class_name
      FROM gate_passes gp JOIN students s ON s.id = gp.student_id
      LEFT JOIN classes c ON c.id = s.class_id
@@ -68,7 +68,7 @@ router.get('/', (req, res) => {
     notifWhere.push('(n.recipient_id = ? OR n.recipient_id IS NULL)');
     notifParams.push(person_id);
   }
-  const notificationFeed = db.prepare(
+  const notificationFeed = await db.prepare(
     `SELECT * FROM notifications n WHERE ${notifWhere.join(' AND ')} ORDER BY n.id DESC LIMIT 10`
   ).all(...notifParams);
 
@@ -78,8 +78,8 @@ router.get('/', (req, res) => {
     const d = new Date();
     d.setDate(d.getDate() - i);
     const ds = d.toISOString().slice(0, 10);
-    const s = statusCounts('student', ds);
-    const e = statusCounts('employee', ds);
+    const s = await statusCounts('student', ds);
+    const e = await statusCounts('employee', ds);
     const present = s.present + s.late + s.half_day + e.present + e.late + e.half_day + e.overtime + e.early_exit;
     weekly.push({
       date: ds,

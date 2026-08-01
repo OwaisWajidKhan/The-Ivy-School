@@ -24,9 +24,10 @@ A modern, cloud-ready School Attendance Management System with RFID card scannin
 |-------|------------|
 | Frontend | React 18 + Vite + Tailwind CSS + Recharts |
 | Backend | Node.js + Express |
-| Database | SQLite (built-in `node:sqlite`, zero native deps) |
+| Database | SQLite (`node:sqlite`, zero native deps) locally · Turso (libSQL) serverless on Vercel |
 | Auth | JWT access + refresh tokens, bcrypt, rate limiting |
-| Cloud | Docker-compose ready; swap SQLite for Supabase/Postgres to scale |
+| Uploads | Local disk in dev/packaged mode · Vercel Blob on Vercel |
+| Cloud | Vercel serverless (Turso + Blob) · Docker-compose ready |
 
 ## Quick start (local development)
 
@@ -82,9 +83,45 @@ docker compose up --build -d
 
 Set `JWT_SECRET` and `JWT_REFRESH_SECRET` in the environment. Database and uploads are stored in named volumes.
 
-## Cloud / Supabase notes
+## Deploy to Vercel (serverless)
 
-This build uses SQLite via Node's built-in `node:sqlite` (no native compilation, ideal for single-node deploys). To scale to multi-campus with thousands of users, migrate the data layer to Supabase Postgres by replacing the queries in `backend/src/db/schema.js` with the Supabase JS client — the REST API contract in `backend/src/routes/*` stays unchanged. Uploads can be moved to Supabase Storage.
+The app deploys as a single Vercel Node function plus the static frontend build.
+
+1. **Create a Turso database** (serverless SQLite):
+   ```bash
+   turso db create ivy-school
+   turso db show ivy-school --url        # -> TURSO_DATABASE_URL
+   turso db tokens create ivy-school     # -> TURSO_AUTH_TOKEN
+   ```
+2. **Create a Vercel Blob store** (for photo/document uploads) from the Vercel
+   dashboard and copy `BLOB_READ_WRITE_TOKEN`.
+3. **Push to a Git repo** and import it in Vercel (or run `vercel` from the
+   repo root). Vercel runs the root `build` script, serves `frontend/dist`,
+   and maps `api/index.js` to the `/api` and `/uploads` routes via
+   `vercel.json`.
+4. **Set environment variables** in Vercel:
+   ```
+   TURSO_DATABASE_URL=<from step 1>
+   TURSO_AUTH_TOKEN=<from step 1>
+   BLOB_READ_WRITE_TOKEN=<from step 2>
+   JWT_SECRET=<random long string>
+   JWT_REFRESH_SECRET=<random long string>
+   FRONTEND_URL=https://<your-project>.vercel.app
+   ```
+5. **First request auto-seeds** the empty Turso database (schema + demo data
+   + Phase-2 reference data). Health check: `https://<your-project>.vercel.app/api/health`.
+
+See `docs/DEPLOYMENT.md` → "Option D — Vercel serverless" for details,
+including local preview with a Turso `file:` URL.
+
+## Cloud notes
+
+- **Local / packaged**: SQLite via Node's built-in `node:sqlite` — no native
+  compilation, single-file DB under `backend/data/school.db`.
+- **Serverless (Vercel)**: Turso (libSQL over HTTPS) is persistent and
+  multi-instance safe; uploads go to Vercel Blob. The REST API contract in
+  `backend/src/routes/*` is identical — the data layer is swapped in
+  `backend/src/db/client.js` (Turso vs local) with no route changes.
 
 ## Project structure
 

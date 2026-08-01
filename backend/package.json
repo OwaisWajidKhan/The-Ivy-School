@@ -14,13 +14,15 @@
     "dist": "npm.cmd run build:frontend && npm.cmd run bundle && npm.cmd run package"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=22"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.0",
+    "@vercel/blob": "^2.6.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
+    "express": "^5.1.0",
     "express-rate-limit": "^7.4.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",

@@ -1,24 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const config = require('../config');
 const { db } = require('../db/schema');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { ok, fail, audit, paginate, todayStr } = require('../utils/helpers');
+const storage = require('../services/storageService');
 
 const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
-
-fs.mkdirSync(config.uploadDir, { recursive: true });
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, config.uploadDir),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname) || '.jpg';
-      cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
-    }
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (/image\//.test(file.mimetype)) cb(null, true);
@@ -36,7 +26,7 @@ const selectBase = `
 `;
 
 // List students with filters
-router.get('/', requirePermission('manage_students'), (req, res) => {
+router.get('/', requirePermission('manage_students'), async (req, res) => {
   const { page, limit, offset } = paginate(req.query.page, req.query.limit);
   const where = [];
   const params = [];
@@ -50,17 +40,17 @@ router.get('/', requirePermission('manage_students'), (req, res) => {
   if (req.query.status) { where.push('s.status = ?'); params.push(req.query.status); }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const total = db.prepare(`SELECT COUNT(*) AS c FROM students s ${whereSql}`).get(...params).c;
-  const rows = db.prepare(`${selectBase} ${whereSql} ORDER BY s.full_name LIMIT ? OFFSET ?`).all(...params, limit, offset);
+  const total = (await db.prepare(`SELECT COUNT(*) AS c FROM students s ${whereSql}`).get(...params)).c;
+  const rows = await db.prepare(`${selectBase} ${whereSql} ORDER BY s.full_name LIMIT ? OFFSET ?`).all(...params, limit, offset);
   ok(res, { items: rows, total, page, limit });
 });
 
 // Quick lookup (as-you-type) with live results + last gate activity
-router.get('/search', (req, res) => {
+router.get('/search', async (req, res) => {
   const { q } = req.query;
   if (!q || !String(q).trim()) return ok(res, { items: [] });
   const term = `%${String(q).trim()}%`;
-  const rows = db.prepare(
+  const rows = await db.prepare(
     `SELECT s.id, s.full_name, s.student_id, s.rfid_uid, s.photo, s.class_id, s.status,
        c.name AS class_name, sec.name AS section_name,
        (SELECT status FROM rfid_cards rc WHERE rc.uid = s.rfid_uid) AS card_status,
@@ -76,7 +66,7 @@ router.get('/search', (req, res) => {
 });
 
 // Bulk import students via CSV (headers: full_name,father_name,student_id,class_name,section_name,rfid_uid,gender,parent_contact)
-router.post('/import', requirePermission('manage_students'), csvUpload.single('file'), (req, res) => {
+router.post('/import', requirePermission('manage_students'), csvUpload.single('file'), async (req, res) => {
   if (!req.file) return fail(res, 'CSV file required');
   const text = req.file.buffer.toString('utf8').replace(/^\uFEFF/, '');
   const lines = text.split(/\r?\n/).filter(l => l.trim());
@@ -101,27 +91,27 @@ router.post('/import', requirePermission('manage_students'), csvUpload.single('f
     const fullName = get(cFull);
     const studentId = get(cSid);
     if (!fullName || !studentId) { results.skipped++; continue; }
-    if (db.prepare('SELECT id FROM students WHERE student_id = ?').get(studentId)) { results.errors.push(`Row ${i + 1}: student_id ${studentId} already exists`); results.skipped++; continue; }
+    if (await db.prepare('SELECT id FROM students WHERE student_id = ?').get(studentId)) { results.errors.push(`Row ${i + 1}: student_id ${studentId} already exists`); results.skipped++; continue; }
     let classId = null, sectionId = null;
     const className = get(cClass);
     if (className) {
-      const cls = db.prepare('SELECT id FROM classes WHERE name = ?').get(className);
+      const cls = await db.prepare('SELECT id FROM classes WHERE name = ?').get(className);
       if (cls) {
         classId = cls.id;
         const secName = get(cSec);
         if (secName) {
-          const sec = db.prepare('SELECT id FROM sections WHERE class_id = ? AND name = ?').get(classId, secName);
+          const sec = await db.prepare('SELECT id FROM sections WHERE class_id = ? AND name = ?').get(classId, secName);
           if (sec) sectionId = sec.id;
         }
       }
     }
     try {
-      const info = db.prepare(
+      const info = await db.prepare(
         'INSERT INTO students (student_id, admission_number, rfid_uid, full_name, father_name, class_id, section_id, gender, phone, parent_contact, status) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
       ).run(studentId, `ADM-${String(Date.now()).slice(-7)}-${i}`, get(cUid) || null, fullName, get(cFather) || null,
         classId, sectionId, get(cGender) || null, get(cPhone) || null, get(cParent) || null, 'active');
       if (get(cUid)) {
-        db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
+        await db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
           .run(get(cUid), 'student', info.lastInsertRowid, new Date().toISOString(), 'active');
       }
       results.imported++;
@@ -135,66 +125,68 @@ router.post('/import', requirePermission('manage_students'), csvUpload.single('f
 });
 
 // Promote / transfer students between classes at year-end
-router.post('/promote', requirePermission('manage_students'), (req, res) => {
+router.post('/promote', requirePermission('manage_students'), async (req, res) => {
   const { from_class_id, to_class_id, student_ids, new_section_id } = req.body;
   if ((!from_class_id && !student_ids) || !to_class_id) return fail(res, 'Provide from_class_id (or student_ids) and to_class_id');
   const ids = student_ids && student_ids.length
     ? student_ids
-    : db.prepare('SELECT id FROM students WHERE class_id = ?').all(from_class_id).map(r => r.id);
+    : (await db.prepare('SELECT id FROM students WHERE class_id = ?').all(from_class_id)).map(r => r.id);
   if (!ids.length) return fail(res, 'No students to promote');
-  const stmt = db.prepare('UPDATE students SET class_id = ?, section_id = ?, status = ? WHERE id = ?');
+  const stmt = await db.prepare('UPDATE students SET class_id = ?, section_id = ?, status = ? WHERE id = ?');
   const targetStatus = req.body.promote ? 'active' : (req.body.status || 'active');
-  for (const id of ids) stmt.run(to_class_id, new_section_id || null, targetStatus, id);
+  for (const id of ids) await stmt.run(to_class_id, new_section_id || null, targetStatus, id);
   audit(req.user, 'promote_students', 'student', null, { count: ids.length, to_class_id }, req.ip);
   ok(res, { promoted: ids.length, student_ids: ids });
 });
 
 // Link siblings under one family id
-router.post('/link-siblings', requirePermission('manage_students'), (req, res) => {
+router.post('/link-siblings', requirePermission('manage_students'), async (req, res) => {
   const { student_ids, family_id } = req.body;
   if (!student_ids || !student_ids.length) return fail(res, 'student_ids required');
   const fid = family_id || `FAM-${Date.now().toString().slice(-6)}`;
-  const stmt = db.prepare('UPDATE students SET family_id = ? WHERE id = ?');
-  for (const id of student_ids) stmt.run(fid, id);
+  const stmt = await db.prepare('UPDATE students SET family_id = ? WHERE id = ?');
+  for (const id of student_ids) await stmt.run(fid, id);
   audit(req.user, 'link_siblings', 'student', null, { family_id: fid, count: student_ids.length }, req.ip);
   ok(res, { family_id: fid, linked: student_ids.length });
 });
 
 // Student detail + attendance
-router.get('/:id', requirePermission('manage_students'), (req, res) => {
-  const s = db.prepare(`${selectBase} WHERE s.id = ?`).get(req.params.id);
+router.get('/:id', requirePermission('manage_students'), async (req, res) => {
+  const s = await db.prepare(`${selectBase} WHERE s.id = ?`).get(req.params.id);
   if (!s) return fail(res, 'Student not found', 404);
-  const attendance = db.prepare(
+  const attendance = await db.prepare(
     'SELECT * FROM attendance_summary WHERE person_type = ? AND person_id = ? ORDER BY date DESC LIMIT 30'
   ).all('student', s.id);
   ok(res, { ...s, attendance });
 });
 
 // Create student
-router.post('/', upload.single('photo'), requirePermission('manage_students'), (req, res) => {
+router.post('/', upload.single('photo'), requirePermission('manage_students'), async (req, res) => {
   const b = req.body;
   if (!b.full_name) return fail(res, 'Full name is required');
   const studentId = b.student_id || `S-${Date.now().toString().slice(-6)}`;
   const admissionNumber = b.admission_number || `ADM-${Date.now().toString().slice(-7)}`;
-  const photo = req.file ? `/uploads/${req.file.filename}` : b.photo || null;
+  const photo = req.file
+    ? await storage.uploadBuffer({ buffer: req.file.buffer, folder: 'photos', originalname: req.file.originalname, mimetype: req.file.mimetype })
+    : b.photo || null;
 
-  const insert = db.prepare(`
+  const insert = await db.prepare(`
     INSERT INTO students (student_id, admission_number, rfid_uid, full_name, father_name, class_id, section_id, roll_number, dob, gender, phone, parent_contact, address, status, photo)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `);
   try {
-    const info = insert.run(
+    const info = await insert.run(
       studentId, admissionNumber, b.rfid_uid || null, b.full_name, b.father_name || null,
       b.class_id || null, b.section_id || null, b.roll_number || null, b.dob || null,
       b.gender || null, b.phone || null, b.parent_contact || null, b.address || null,
       b.status || 'active', photo
     );
     if (b.rfid_uid) {
-      db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
+      await db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
         .run(b.rfid_uid, 'student', info.lastInsertRowid, new Date().toISOString(), 'active');
     }
     audit(req.user, 'create_student', 'student', info.lastInsertRowid, { name: b.full_name }, req.ip);
-    const created = db.prepare(`${selectBase} WHERE s.id = ?`).get(info.lastInsertRowid);
+    const created = await db.prepare(`${selectBase} WHERE s.id = ?`).get(info.lastInsertRowid);
     ok(res, created, 201);
   } catch (e) {
     if (String(e.message).includes('UNIQUE')) return fail(res, 'Duplicate record (student id, admission number or RFID UID already exists)');
@@ -203,13 +195,16 @@ router.post('/', upload.single('photo'), requirePermission('manage_students'), (
 });
 
 // Update student
-router.put('/:id', upload.single('photo'), requirePermission('manage_students'), (req, res) => {
-  const existing = db.prepare('SELECT * FROM students WHERE id = ?').get(req.params.id);
+router.put('/:id', upload.single('photo'), requirePermission('manage_students'), async (req, res) => {
+  const existing = await db.prepare('SELECT * FROM students WHERE id = ?').get(req.params.id);
   if (!existing) return fail(res, 'Student not found', 404);
   const b = req.body;
-  const photo = req.file ? `/uploads/${req.file.filename}` : (b.photo !== undefined ? b.photo : existing.photo);
+  const photo = req.file
+    ? await storage.uploadBuffer({ buffer: req.file.buffer, folder: 'photos', originalname: req.file.originalname, mimetype: req.file.mimetype })
+    : (b.photo !== undefined ? b.photo : existing.photo);
+  if (req.file && existing.photo) await storage.deleteUpload(existing.photo);
 
-  db.prepare(`
+  await db.prepare(`
     UPDATE students SET student_id=?, admission_number=?, rfid_uid=?, full_name=?, father_name=?,
       class_id=?, section_id=?, roll_number=?, dob=?, gender=?, phone=?, parent_contact=?, address=?, status=?, photo=?
     WHERE id=?
@@ -228,18 +223,19 @@ router.put('/:id', upload.single('photo'), requirePermission('manage_students'),
     existing.id
   );
   if (b.rfid_uid && b.rfid_uid !== existing.rfid_uid) {
-    db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
+    await db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
       .run(b.rfid_uid, 'student', existing.id, new Date().toISOString(), 'active');
   }
   audit(req.user, 'update_student', 'student', existing.id, { name: b.full_name }, req.ip);
-  ok(res, db.prepare(`${selectBase} WHERE s.id = ?`).get(existing.id));
+  ok(res, await db.prepare(`${selectBase} WHERE s.id = ?`).get(existing.id));
 });
 
 // Delete student
-router.delete('/:id', requirePermission('manage_students'), (req, res) => {
-  const existing = db.prepare('SELECT * FROM students WHERE id = ?').get(req.params.id);
+router.delete('/:id', requirePermission('manage_students'), async (req, res) => {
+  const existing = await db.prepare('SELECT * FROM students WHERE id = ?').get(req.params.id);
   if (!existing) return fail(res, 'Student not found', 404);
-  db.prepare('DELETE FROM students WHERE id = ?').run(existing.id);
+  await db.prepare('DELETE FROM students WHERE id = ?').run(existing.id);
+  if (existing.photo) await storage.deleteUpload(existing.photo);
   audit(req.user, 'delete_student', 'student', existing.id, { name: existing.full_name }, req.ip);
   ok(res, { message: 'Student deleted' });
 });

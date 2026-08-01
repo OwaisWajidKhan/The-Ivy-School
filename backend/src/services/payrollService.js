@@ -1,10 +1,9 @@
 const { db } = require('../db/schema');
 const { todayStr } = require('../utils/helpers');
 
-function countWorkingDays(month, year) {
-  const holidays = db.prepare('SELECT date FROM holidays WHERE strftime(\'%m\', date) = ? AND strftime(\'%Y\', date) = ?')
-    .all(String(month).padStart(2, '0'), String(year))
-    .map(r => r.date);
+async function countWorkingDays(month, year) {
+  const holidays = (await db.prepare('SELECT date FROM holidays WHERE strftime(\'%m\', date) = ? AND strftime(\'%Y\', date) = ?')
+    .all(String(month).padStart(2, '0'), String(year))).map(r => r.date);
   let count = 0;
   const daysInMonth = new Date(year, month, 0).getDate();
   for (let d = 1; d <= daysInMonth; d++) {
@@ -18,10 +17,10 @@ function countWorkingDays(month, year) {
   return count;
 }
 
-function approvedLeaveDays(employeeId, month, year) {
+async function approvedLeaveDays(employeeId, month, year) {
   const start = `${year}-${String(month).padStart(2, '0')}-01`;
   const end = `${year}-${String(month).padStart(2, '0')}-31`;
-  const rows = db.prepare(
+  const rows = await db.prepare(
     `SELECT leave_type, start_date, end_date FROM leaves
      WHERE person_type = 'employee' AND person_id = ? AND status = 'approved'
        AND start_date <= ? AND end_date >= ?`
@@ -47,9 +46,9 @@ function approvedLeaveDays(employeeId, month, year) {
   return { total, withoutPay, paid: total - withoutPay };
 }
 
-function generateForMonth(month, year) {
-  const workingDays = countWorkingDays(month, year);
-  const employees = db.prepare(
+async function generateForMonth(month, year) {
+  const workingDays = await countWorkingDays(month, year);
+  const employees = await db.prepare(
     `SELECT e.*, s.name AS shift_name
      FROM employees e LEFT JOIN shifts s ON s.id = e.shift_id
      WHERE e.status = 'active'`
@@ -58,7 +57,7 @@ function generateForMonth(month, year) {
   const periodStart = `${year}-${String(month).padStart(2, '0')}-01`;
   const periodEnd = `${year}-${String(month).padStart(2, '0')}-31`;
 
-  const upsert = db.prepare(`
+  const upsert = await db.prepare(`
     INSERT INTO payroll (
       employee_id, month, year, working_days, present_days, absent_days, late_days, half_days,
       leave_days, overtime_hours, total_working_hours, base_salary, overtime_pay, leave_adjustment,
@@ -77,7 +76,7 @@ function generateForMonth(month, year) {
 
   const results = [];
   for (const emp of employees) {
-    const summary = db.prepare(
+    const summary = await db.prepare(
       `SELECT status, working_hours, overtime_hours FROM attendance_summary
        WHERE person_type = 'employee' AND person_id = ? AND date BETWEEN ? AND ?`
     ).all(emp.id, periodStart, periodEnd);
@@ -88,7 +87,7 @@ function generateForMonth(month, year) {
     const totalWorkingHours = Math.round(summary.reduce((a, r) => a + r.working_hours, 0) * 100) / 100;
     const overtimeHours = Math.round(summary.reduce((a, r) => a + r.overtime_hours, 0) * 100) / 100;
 
-    const leaves = approvedLeaveDays(emp.id, month, year);
+    const leaves = await approvedLeaveDays(emp.id, month, year);
     const absentDays = Math.max(0, workingDays - presentDays - leaves.total);
 
     const hourlyRate = workingDays > 0 && (emp.working_hours || 8) > 0
@@ -104,7 +103,7 @@ function generateForMonth(month, year) {
 
     const netSalary = Math.round((emp.salary - deductions + overtimePay) * 100) / 100;
 
-    upsert.run(
+    await upsert.run(
       emp.id, month, year, workingDays, presentDays, absentDays, lateDays, halfDays,
       leaves.total, overtimeHours, totalWorkingHours, emp.salary, overtimePay,
       leaves.withoutPay * dayRate, deductions, 0, netSalary,
@@ -130,8 +129,8 @@ function generateForMonth(month, year) {
   return results;
 }
 
-function getReport(month, year) {
-  return db.prepare(
+async function getReport(month, year) {
+  return await db.prepare(
     `SELECT p.*, e.full_name, e.employee_id, e.designation, d.name AS department,
             e.salary AS current_salary
      FROM payroll p
@@ -143,25 +142,25 @@ function getReport(month, year) {
 }
 
 // Approve a generated payroll record (HR review step). Returns the record.
-function approveRecord(id, userId) {
-  const row = db.prepare('SELECT * FROM payroll WHERE id = ?').get(id);
+async function approveRecord(id, userId) {
+  const row = await db.prepare('SELECT * FROM payroll WHERE id = ?').get(id);
   if (!row) return { ok: false, message: 'Payroll record not found' };
-  db.prepare("UPDATE payroll SET status = 'approved', approved_by = ?, approved_at = datetime('now') WHERE id = ?")
+  await db.prepare("UPDATE payroll SET status = 'approved', approved_by = ?, approved_at = datetime('now') WHERE id = ?")
     .run(userId, id);
-  return { ok: true, row: db.prepare('SELECT * FROM payroll WHERE id = ?').get(id) };
+  return { ok: true, row: await db.prepare('SELECT * FROM payroll WHERE id = ?').get(id) };
 }
 
 // Approve all draft records for a month/year.
-function approveMonth(month, year, userId) {
-  const info = db.prepare(
+async function approveMonth(month, year, userId) {
+  const info = await db.prepare(
     "UPDATE payroll SET status = 'approved', approved_by = ?, approved_at = datetime('now') WHERE month = ? AND year = ? AND status = 'draft'"
   ).run(userId, month, year);
   return info.changes;
 }
 
 // Monthly payroll summary per department (for the payroll report).
-function departmentSummary(month, year) {
-  return db.prepare(
+async function departmentSummary(month, year) {
+  return await db.prepare(
     `SELECT d.name AS department,
        COUNT(p.id) AS employees,
        ROUND(SUM(p.base_salary), 2) AS total_base,

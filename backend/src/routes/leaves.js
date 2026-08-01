@@ -1,19 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const config = require('../config');
 const { db } = require('../db/schema');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { ok, fail, audit, paginate } = require('../utils/helpers');
+const storage = require('../services/storageService');
 
-fs.mkdirSync(config.uploadDir, { recursive: true });
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, config.uploadDir),
-    filename: (req, file, cb) => cb(null, `leave-${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname) || ''}`)
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }
 });
 
@@ -21,7 +15,7 @@ router.use(requireAuth);
 
 const TYPES = ['Casual', 'Sick', 'Annual', 'Emergency', 'Without Pay'];
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const { page, limit, offset } = paginate(req.query.page, req.query.limit);
   const where = [];
   const params = [];
@@ -33,8 +27,8 @@ router.get('/', (req, res) => {
   if (req.query.status) { where.push('l.status = ?'); params.push(req.query.status); }
   if (req.query.leave_type) { where.push('l.leave_type = ?'); params.push(req.query.leave_type); }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const total = db.prepare(`SELECT COUNT(*) AS c FROM leaves l ${whereSql}`).get(...params).c;
-  const rows = db.prepare(
+  const total = (await db.prepare(`SELECT COUNT(*) AS c FROM leaves l ${whereSql}`).get(...params)).c;
+  const rows = await db.prepare(
     `SELECT l.*, u.username AS reviewer,
        CASE WHEN l.person_type='employee' THEN e.full_name ELSE st.full_name END AS full_name
      FROM leaves l
@@ -46,7 +40,7 @@ router.get('/', (req, res) => {
   ok(res, { items: rows, total, page, limit });
 });
 
-router.post('/', upload.single('document'), (req, res) => {
+router.post('/', upload.single('document'), async (req, res) => {
   const b = req.body;
   if (!b.leave_type || !TYPES.includes(b.leave_type)) return fail(res, `leave_type must be one of ${TYPES.join(', ')}`);
   if (!b.start_date || !b.end_date) return fail(res, 'start_date and end_date required');
@@ -66,49 +60,51 @@ router.post('/', upload.single('document'), (req, res) => {
   const start = new Date(b.start_date);
   const end = new Date(b.end_date);
   const days = Math.max(1, Math.round((end - start) / 86400000) + 1);
-  const document = req.file ? `/uploads/${req.file.filename}` : b.document || null;
+  const document = req.file
+    ? await storage.uploadBuffer({ buffer: req.file.buffer, folder: 'documents', originalname: req.file.originalname, mimetype: req.file.mimetype })
+    : b.document || null;
 
-  const info = db.prepare(
+  const info = await db.prepare(
     'INSERT INTO leaves (person_type, person_id, leave_type, start_date, end_date, days, reason, document, status) VALUES (?,?,?,?,?,?,?,?,?)'
   ).run(personType, personId, b.leave_type, b.start_date, b.end_date, days, b.reason || null, document, 'pending');
 
   audit(req.user, 'request_leave', 'leave', info.lastInsertRowid, { type: b.leave_type, start_date: b.start_date }, req.ip);
-  db.prepare('INSERT INTO notifications (recipient_type, recipient_id, channel, type, title, message) VALUES (?,?,?,?,?,?)')
+  await db.prepare('INSERT INTO notifications (recipient_type, recipient_id, channel, type, title, message) VALUES (?,?,?,?,?,?)')
     .run('admin', null, 'email', 'leave', 'New leave request', `${req.user.username} requested ${b.leave_type} leave from ${b.start_date} to ${b.end_date}.`);
-  ok(res, db.prepare('SELECT * FROM leaves WHERE id = ?').get(info.lastInsertRowid), 201);
+  ok(res, await db.prepare('SELECT * FROM leaves WHERE id = ?').get(info.lastInsertRowid), 201);
 });
 
 // Approve / reject / cancel
-router.put('/:id/status', requirePermission('approve_leave'), (req, res) => {
+router.put('/:id/status', requirePermission('approve_leave'), async (req, res) => {
   const { status } = req.body;
   if (!['approved', 'rejected', 'cancelled'].includes(status)) return fail(res, 'Invalid status');
-  const leaf = db.prepare('SELECT * FROM leaves WHERE id = ?').get(req.params.id);
+  const leaf = await db.prepare('SELECT * FROM leaves WHERE id = ?').get(req.params.id);
   if (!leaf) return fail(res, 'Leave not found', 404);
 
-  db.prepare('UPDATE leaves SET status = ?, approved_by = ?, reviewed_at = datetime(\'now\') WHERE id = ?')
+  await db.prepare('UPDATE leaves SET status = ?, approved_by = ?, reviewed_at = datetime(\'now\') WHERE id = ?')
     .run(status, req.user.id, leaf.id);
 
   if (status === 'approved') {
     // deduct from employee leave balance
     if (leaf.person_type === 'employee') {
-      const emp = db.prepare('SELECT leave_balance FROM employees WHERE id = ?').get(leaf.person_id);
+      const emp = await db.prepare('SELECT leave_balance FROM employees WHERE id = ?').get(leaf.person_id);
       if (emp) {
-        db.prepare('UPDATE employees SET leave_balance = MAX(0, leave_balance - ?) WHERE id = ?').run(leaf.days, leaf.person_id);
+        await db.prepare('UPDATE employees SET leave_balance = MAX(0, leave_balance - ?) WHERE id = ?').run(leaf.days, leaf.person_id);
       }
     }
   } else if (status === 'rejected' || status === 'cancelled') {
     // restore balance if previously approved
     const wasApproved = leaf.status === 'approved';
     if (wasApproved && leaf.person_type === 'employee') {
-      db.prepare('UPDATE employees SET leave_balance = leave_balance + ? WHERE id = ?').run(leaf.days, leaf.person_id);
+      await db.prepare('UPDATE employees SET leave_balance = leave_balance + ? WHERE id = ?').run(leaf.days, leaf.person_id);
     }
   }
 
   audit(req.user, 'review_leave', 'leave', leaf.id, { status }, req.ip);
-  db.prepare('INSERT INTO notifications (recipient_type, recipient_id, channel, type, title, message) VALUES (?,?,?,?,?,?)')
+  await db.prepare('INSERT INTO notifications (recipient_type, recipient_id, channel, type, title, message) VALUES (?,?,?,?,?,?)')
     .run(leaf.person_type === 'student' ? 'parent' : 'employee', leaf.person_id, 'email', 'leave',
       `Leave ${status}`, `Your ${leaf.leave_type} leave request (${leaf.start_date} to ${leaf.end_date}) was ${status}.`);
-  ok(res, db.prepare('SELECT * FROM leaves WHERE id = ?').get(leaf.id));
+  ok(res, await db.prepare('SELECT * FROM leaves WHERE id = ?').get(leaf.id));
 });
 
 module.exports = router;
