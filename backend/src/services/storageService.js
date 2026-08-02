@@ -22,12 +22,15 @@ async function uploadBuffer({ buffer, folder = 'misc', originalname = '', mimety
   const rel = `/uploads/${folder}/${file}`;
   if (VERCEL_BLOB) {
     const { put } = require('@vercel/blob');
-    await put(`${folder}/${file}`, buffer, {
+    const { url } = await put(`${folder}/${file}`, buffer, {
       access: 'public',
       addRandomSuffix: false,
       contentType: mimetype || undefined
     });
-    return rel;
+    // Return the absolute public URL. Every <img> src then loads straight from
+    // the Blob CDN instead of round-tripping through the /uploads redirect hop,
+    // which was failing (404) on serverless.
+    return url;
   }
   const dir = path.join(config.uploadDir, folder);
   fs.mkdirSync(dir, { recursive: true });
@@ -40,7 +43,9 @@ async function deleteUpload(rel) {
   if (VERCEL_BLOB) {
     try {
       const { del } = require('@vercel/blob');
-      await del(rel.replace(/^\/uploads\//, ''));
+      // Accept the absolute CDN url returned by put(), or a relative /uploads path.
+      const target = rel.startsWith('/uploads/') ? rel.replace(/^\/uploads\//, '') : rel;
+      await del(target);
     } catch (e) {
       // best-effort
     }
@@ -64,7 +69,8 @@ async function serveUpload(req, res, rel) {
   const key = rel.replace(/^\/uploads\//, '');
   const info = await head(key).catch(() => null);
   if (!info) return res.status(404).end();
-  return res.redirect(info.url);
+  // downloadUrl is signed and works whether or not the store allows public reads.
+  return res.redirect(info.downloadUrl || info.url);
 }
 
 module.exports = { uploadBuffer, deleteUpload, serveUpload, VERCEL_BLOB };
