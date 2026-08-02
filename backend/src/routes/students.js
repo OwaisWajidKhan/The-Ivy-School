@@ -150,6 +150,29 @@ router.post('/link-siblings', requirePermission('manage_students'), async (req, 
   ok(res, { family_id: fid, linked: student_ids.length });
 });
 
+// Junior Nursery registry: the full intake with mother/father family profiles
+router.get('/jn', requirePermission('manage_students'), async (req, res) => {
+  const rows = await db.prepare(`
+    SELECT s.id, s.student_id, s.full_name, s.gender, s.dob, s.email, s.roll_number,
+           s.address, s.parent_contact, s.status, s.photo,
+           c.name AS class_name, sec.name AS section_name
+    FROM students s
+    JOIN classes c ON c.id = s.class_id
+    LEFT JOIN sections sec ON sec.id = s.section_id
+    WHERE LOWER(c.name) LIKE '%junior nursery%'
+    ORDER BY s.student_id
+  `).all();
+  // attach parents per student
+  const students = [];
+  for (const s of rows) {
+    const parents = await db.prepare(
+      'SELECT relation, full_name, phone, email, education, profession, employer, marital_status, address FROM parents WHERE student_id = ? ORDER BY relation'
+    ).all(s.id);
+    students.push({ ...s, dob: s.dob || '', parents });
+  }
+  ok(res, { items: students, total: students.length });
+});
+
 // Student detail + attendance
 router.get('/:id', requirePermission('manage_students'), async (req, res) => {
   const s = await db.prepare(`${selectBase} WHERE s.id = ?`).get(req.params.id);

@@ -332,6 +332,26 @@ CREATE TABLE IF NOT EXISTS employee_documents (
 );
 CREATE INDEX IF NOT EXISTS idx_empdocs_emp ON employee_documents(employee_id);
 
+-- ============================================================
+-- Parents / guardians (full profile from enrolment intake)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS parents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  relation TEXT NOT NULL CHECK(relation IN ('mother','father','guardian')),
+  full_name TEXT,
+  phone TEXT,
+  email TEXT,
+  education TEXT,
+  profession TEXT,
+  employer TEXT,
+  marital_status TEXT,
+  address TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_parents_student ON parents(student_id);
+CREATE INDEX IF NOT EXISTS idx_parents_name ON parents(full_name);
+
 CREATE TABLE IF NOT EXISTS gate_passes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
@@ -362,6 +382,7 @@ const MIGRATIONS = [
   { table: 'payroll', column: 'approved_by', ddl: 'INTEGER REFERENCES users(id)' },
   { table: 'payroll', column: 'approved_at', ddl: 'TEXT' },
   { table: 'students', column: 'family_id', ddl: 'TEXT' },
+  { table: 'students', column: 'email', ddl: 'TEXT' },
   { table: 'employees', column: 'designation_id', ddl: 'INTEGER REFERENCES designations(id)' },
   { table: 'attendance_logs', column: 'gate_pass_id', ddl: 'INTEGER REFERENCES gate_passes(id)' }
 ];
