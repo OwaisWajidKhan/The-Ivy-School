@@ -1,7 +1,7 @@
 # AGENTS.md — Project Progress Tracker
 
 > School Attendance Management System (Cloud-Based) — "The Ivy School"
-> Last updated: 2026-08-02
+> Last updated: 2026-08-03
 ## How to use
 This file tracks the current state of the build. Update the "Current status", progress checklists, and "Known issues" sections after each working session. Run commands from the `backend/` or `frontend/` directories as noted.
 
@@ -154,6 +154,13 @@ D:\The Ivy School\
 - [x] Docker config (Dockerfiles + docker-compose + nginx) + deployment guide
 - [x] API documentation (`docs/API.md`) · README with installation instructions
 - [ ] Test cases + sample data verification (end-to-end) — largely done manually via curl; automated suite still open
+
+## Session 2026-08-03 (Junior Nursery intake + fixes) — merged via PRs #7, #8
+- **JN import**: `docs/Masterfile-2025-2026.xlsx` (private, gitignored) → `docs/junior-nursery.csv` → Turso. Idempotent `backend/scripts/import-jn.js`; fixes father/mother field prefix + backfill. Father names from source notes (28 of 29). Live: 29 students, 28 fathers, 28 mothers.
+- **Registry UI**: `frontend/src/pages/JuniorNursery.jsx` (+ route, sidebar item); profile modal.
+- **Modal bug**: page wrapper `animate-slide-up` uses `fill-mode: both`, leaving `transform` that traps `position:fixed` modals → render modals via `createPortal(..., document.body)` (`frontend/src/components/Modal.jsx`).
+- **Uploads storage**: Blob mode is only used on a real Vercel runtime (`process.env.VERCEL === '1'`), so a token in a local `.env` no longer forces Vercel Blob. Blob `uploadBuffer` returns the **absolute public URL** from `put()` (avoids a `/uploads` redirect that 404'd on serverless); delete/serve updated.
+- **Vercel Blob store**: set to **Public** access (chosen at creation; access can't be changed after). New token `vercel_blob_rw_…` in root `.env` (scope-limited, private) + Vercel env var.
 
 ## Seed login credentials
 | Role | Username | Password |
