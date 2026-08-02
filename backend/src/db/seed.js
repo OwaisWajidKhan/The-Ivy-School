@@ -24,7 +24,7 @@ async function ensurePhase2ReferenceData() {
 
   const branding = {
     school_logo: '', school_address: '', school_contact_email: '',
-    school_contact_phone: '', school_footer_text: '© The Ivy School', school_timezone: 'UTC'
+    school_contact_phone: '', school_footer_text: '© The Ivy School', school_timezone: require('../utils/timezone').effectiveTz()
   };
   for (const [k, v] of Object.entries(branding)) {
     if (!await db.prepare('SELECT key FROM settings WHERE key = ?').get(k)) await setSetting(k, v);
@@ -242,7 +242,7 @@ async function seed() {
   await setSetting('school_contact_email', '');
   await setSetting('school_contact_phone', '');
   await setSetting('school_footer_text', '© The Ivy School');
-  await setSetting('school_timezone', 'UTC');
+  await setSetting('school_timezone', require('../utils/timezone').effectiveTz());
   await setSetting('duplicate_scan_window_sec', String(config.duplicateScanWindowSec));
   await setSetting('school_start_time', '08:00');
   await setSetting('school_end_time', '15:00');

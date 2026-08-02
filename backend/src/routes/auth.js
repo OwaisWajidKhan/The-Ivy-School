@@ -1,10 +1,21 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
 const router = express.Router();
 const { db } = require('../db/schema');
 const config = require('../config');
 const { signAccessToken, signRefreshToken, requireAuth, loadUser, getRoleName } = require('../middleware/auth');
 const { ok, fail, audit } = require('../utils/helpers');
+const storage = require('../services/storageService');
+
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (/image\//.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Only image uploads are allowed'));
+  }
+});
 
 // Login with brute-force protection
 router.post('/login', async (req, res) => {
@@ -69,6 +80,34 @@ router.get('/me', requireAuth, async (req, res) => {
   ok(res, { user: { ...publicUser(full), permissions: parsePerms(full.permissions), person } });
 });
 
+// Update own profile details (email / password)
+router.put('/me', requireAuth, async (req, res) => {
+  const { email, password, currentPassword } = req.body || {};
+  const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!user) return fail(res, 'User not found', 404);
+  if (currentPassword && password) {
+    if (!bcrypt.compareSync(String(currentPassword), user.password_hash)) return fail(res, 'Current password is incorrect', 400);
+    await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(bcrypt.hashSync(String(password), 10), user.id);
+  }
+  if (email !== undefined) await db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email || null, user.id);
+  audit(req.user, 'update_profile', 'user', user.id, null, req.ip);
+  const updated = await db.prepare(
+    `SELECT u.*, r.name AS role_name, r.permissions FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ?`
+  ).get(user.id);
+  ok(res, { user: { ...publicUser(updated), permissions: parsePerms(updated.permissions) } });
+});
+
+// Upload own profile picture (avatar)
+router.put('/me/avatar', requireAuth, avatarUpload.single('avatar'), async (req, res) => {
+  const user = await db.prepare('SELECT avatar FROM users WHERE id = ?').get(req.user.id);
+  if (!req.file) return fail(res, 'No image file provided', 400);
+  const avatar = await storage.uploadBuffer({ buffer: req.file.buffer, folder: 'avatars', originalname: req.file.originalname, mimetype: req.file.mimetype });
+  if (user && user.avatar) await storage.deleteUpload(user.avatar);
+  await db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(avatar, req.user.id);
+  audit(req.user, 'update_avatar', 'user', req.user.id, null, req.ip);
+  ok(res, { user: { ...publicUser(req.user), avatar } });
+});
+
 function parsePerms(p) {
   try { return JSON.parse(p); } catch { return []; }
 }
@@ -85,6 +124,7 @@ function publicUser(u) {
     id: u.id,
     username: u.username,
     email: u.email,
+    avatar: u.avatar || null,
     role: u.role_name,
     personType: u.person_type,
     personId: u.person_id,

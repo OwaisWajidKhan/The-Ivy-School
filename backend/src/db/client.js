@@ -190,6 +190,8 @@ function ensureReady() {
   if (!readyPromise) {
     readyPromise = (async () => {
       await ensureSchema();
+      const timezone = require('../utils/timezone');
+      await timezone.initTimezone();
       const row = await impl.get('SELECT COUNT(*) AS c FROM users', []);
       const seed = require('./seed');
       if (!row || Number(row.c) === 0) {

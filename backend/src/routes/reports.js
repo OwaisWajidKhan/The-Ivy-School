@@ -3,6 +3,7 @@ const router = express.Router();
 const { db } = require('../db/schema');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { ok, fail } = require('../utils/helpers');
+const { todayStr } = require('../utils/helpers');
 
 router.use(requireAuth);
 
@@ -26,8 +27,8 @@ async function buildRows({ personType, from, to }) {
 }
 
 function parseRange(q) {
-  const from = q.from || new Date().toISOString().slice(0, 10);
-  const to = q.to || new Date().toISOString().slice(0, 10);
+  const from = q.from || todayStr();
+  const to = q.to || todayStr();
   const personType = ['student', 'employee'].includes(q.person_type) ? q.person_type : null;
   return { from, to, personType };
 }
@@ -35,7 +36,7 @@ function parseRange(q) {
 // Daily report
 router.get('/daily', requirePermission('view_reports'), async (req, res) => {
   const { date } = req.query;
-  const d = date || new Date().toISOString().slice(0, 10);
+  const d = date || todayStr();
   const students = await db.prepare(
     `SELECT a.*, st.full_name, st.student_id, c.name AS class_name, sec.name AS section_name
      FROM attendance_summary a
@@ -166,7 +167,7 @@ router.get('/export/csv', requirePermission('export_reports'), async (req, res) 
 
 // Export a daily report as CSV
 router.get('/export/daily-csv', requirePermission('export_reports'), async (req, res) => {
-  const d = req.query.date || new Date().toISOString().slice(0, 10);
+  const d = req.query.date || todayStr();
   const students = await db.prepare(
     `SELECT 'Student' AS type, st.student_id AS id, st.full_name, c.name AS class, a.in_time, a.out_time, a.status, a.working_hours
      FROM attendance_summary a JOIN students st ON st.id = a.person_id
@@ -187,8 +188,8 @@ router.get('/export/daily-csv', requirePermission('export_reports'), async (req,
 
 // Student Gate Pass report (all passes in a date range)
 router.get('/gate-passes', requirePermission('view_reports'), async (req, res) => {
-  const from = req.query.from || new Date().toISOString().slice(0, 10);
-  const to = req.query.to || new Date().toISOString().slice(0, 10);
+  const from = req.query.from || todayStr();
+  const to = req.query.to || todayStr();
   const rows = await db.prepare(
     `SELECT gp.pass_no, gp.reason, gp.exit_date, gp.status, gp.created_at AS requested_at, gp.used_at,
        s.full_name, s.student_id, c.name AS class_name, sec.name AS section_name
@@ -261,7 +262,7 @@ router.get('/leaves', requirePermission('view_reports'), async (req, res) => {
 // Export any report as CSV (generic): pass report=gate_passes|attendance_summary|leaves
 router.get('/export/generic', requirePermission('export_reports'), async (req, res) => {
   const { report, from, to, month, year } = req.query;
-  const f = from || new Date().toISOString().slice(0, 10);
+  const f = from || todayStr();
   const t = to || f;
   let rows = [];
   let filename = 'report';

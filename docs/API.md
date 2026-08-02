@@ -12,6 +12,8 @@ All endpoints except `POST /auth/login` and `POST /auth/refresh` require an `Aut
 | POST | `/auth/refresh` | Exchange `{refreshToken}` for a new access token. |
 | POST | `/auth/logout` | Revoke `{refreshToken}`. |
 | GET | `/auth/me` | Current user with role, permissions and linked person. |
+| PUT | `/auth/me` | Update own {`email`, `currentPassword`, `password`}. |
+| PUT | `/auth/me/avatar` | Upload/replace own profile picture (multipart `avatar`, image). |
 
 ## Students
 
@@ -86,6 +88,8 @@ All endpoints except `POST /auth/login` and `POST /auth/refresh` require an `Aut
 | GET | `/attendance/summary` | Summaries (filters: `date`, `from`, `to`, `person_type`, `status`, `person_id`, `class_id`) |
 | GET | `/attendance/logs` | Raw scan logs (filters: `date`, `person_type`, `direction`) |
 | GET | `/attendance/me` | Current user's own attendance history |
+| GET | `/attendance/export` | Download attendance summary as CSV (same filters as `/summary`) |
+| GET | `/attendance/export-logs` | Download raw scan logs as CSV (same filters as `/logs`) |
 
 ## Leaves
 

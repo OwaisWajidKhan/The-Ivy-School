@@ -11,6 +11,7 @@ export default function Users() {
   const { data, loading, reload } = useFetch('/admin/users');
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ username: '', email: '', password: '', role: 'school_admin', person_type: 'admin', person_id: '', status: 'active' });
+  const [avatarFile, setAvatarFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const roles = ['super_admin', 'school_admin', 'hr', 'teacher', 'employee', 'parent'];
@@ -19,9 +20,12 @@ export default function Users() {
     e.preventDefault();
     setSaving(true); setError('');
     try {
-      await api.post('/admin/users', form);
+      const body = new FormData();
+      for (const [k, v] of Object.entries(form)) body.append(k, v || '');
+      if (avatarFile) body.append('avatar', avatarFile);
+      await api.post('/admin/users', body, { headers: { 'Content-Type': 'multipart/form-data' } });
       toast.success('User created');
-      setOpen(false); reload();
+      setOpen(false); setAvatarFile(null); reload();
     } catch (err) { setError(err.response?.data?.message || 'Failed'); } finally { setSaving(false); }
   };
 
@@ -32,7 +36,7 @@ export default function Users() {
           <h2 className="text-xl font-bold">Users & Admins</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">{data?.total || 0} user accounts</p>
         </div>
-        <button className="btn-primary" onClick={() => { setForm({ username: '', email: '', password: '', role: 'school_admin', person_type: 'admin', person_id: '', status: 'active' }); setOpen(true); }}>+ Create User</button>
+        <button className="btn-primary" onClick={() => { setForm({ username: '', email: '', password: '', role: 'school_admin', person_type: 'admin', person_id: '', status: 'active' }); setAvatarFile(null); setOpen(true); }}>+ Create User</button>
       </div>
 
       <div className="card overflow-x-auto">
@@ -86,6 +90,13 @@ export default function Users() {
             </div>
           </div>
           <div><label className="label">Linked person ID</label><input className="input" type="number" value={form.person_id} onChange={e => setForm({ ...form, person_id: e.target.value })} placeholder="Optional" /></div>
+          <div>
+            <label className="label">Profile picture</label>
+            <div className="flex items-center gap-3">
+              {avatarFile && <img src={URL.createObjectURL(avatarFile)} className="h-10 w-10 rounded-full object-cover" alt="preview" />}
+              <input className="input" type="file" accept="image/*" onChange={e => setAvatarFile(e.target.files?.[0] || null)} />
+            </div>
+          </div>
         </form>
       </Modal>
     </div>

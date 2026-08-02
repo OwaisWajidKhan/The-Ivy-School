@@ -39,7 +39,7 @@ async function getPermissions(roleName) {
 
 async function loadUser(userId) {
   return await db.prepare(
-    `SELECT u.id, u.username, u.email, u.person_type, u.person_id, u.status, r.name AS role_name
+    `SELECT u.id, u.username, u.email, u.person_type, u.person_id, u.status, u.avatar, r.name AS role_name
      FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ?`
   ).get(userId);
 }

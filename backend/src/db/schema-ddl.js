@@ -357,6 +357,7 @@ CREATE INDEX IF NOT EXISTS idx_gatepass_status ON gate_passes(status, exit_date)
 `;
 
 const MIGRATIONS = [
+  { table: 'users', column: 'avatar', ddl: 'TEXT' },
   { table: 'payroll', column: 'status', ddl: "TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved','paid'))" },
   { table: 'payroll', column: 'approved_by', ddl: 'INTEGER REFERENCES users(id)' },
   { table: 'payroll', column: 'approved_at', ddl: 'TEXT' },

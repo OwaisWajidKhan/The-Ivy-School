@@ -4,9 +4,30 @@ import useFetch from '../lib/useFetch';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import Spinner, { PageLoader, EmptyState } from '../components/Spinner';
-import { fmtDate, fmtHours, timeAgo } from '../lib/format';
+import { fmtDate, fmtHours, timeAgo, todayStr } from '../lib/format';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+
+// Download an authenticated CSV (axios sends the Bearer header, unlike a plain
+// window.open). Parses the filename from Content-Disposition when present.
+const downloadCsv = async (path) => {
+  try {
+    const res = await api.get(path, { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url;
+    const cd = res.headers['content-disposition'] || '';
+    const m = cd.match(/filename="?([^";]+)"?/);
+    a.download = m ? m[1] : 'attendance.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
 
 function Tab({ active, onClick, children }) {
   return (
@@ -115,13 +136,20 @@ function Section({ title, children }) {
 }
 
 function SummaryView() {
+  const toast = useToast();
   const [params, setParams] = useState({});
   const { data, loading, reload } = useFetch('/attendance/summary', [params], { params });
+  const doExport = async () => {
+    const q = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v) q.set(k, v); });
+    const ok = await downloadCsv(`/attendance/export?${q.toString()}`);
+    if (!ok) toast.error('Export failed');
+  };
   return (
     <div className="space-y-4">
       <div className="card p-4">
         <div className="grid gap-3 sm:grid-cols-5">
-          <input className="input" type="date" defaultValue={new Date().toISOString().slice(0, 10)} onChange={e => setParams(p => ({ ...p, date: e.target.value }))} />
+          <input className="input" type="date" defaultValue={todayStr()} onChange={e => setParams(p => ({ ...p, date: e.target.value }))} />
           <select className="input" value={params.person_type || ''} onChange={e => setParams(p => ({ ...p, person_type: e.target.value || undefined }))}>
             <option value="">All people</option><option value="student">Students</option><option value="employee">Employees</option>
           </select>
@@ -131,6 +159,9 @@ function SummaryView() {
           </select>
           <input className="input" type="date" onChange={e => setParams(p => ({ ...p, from: e.target.value, date: undefined }))} title="From date" />
           <input className="input" type="date" onChange={e => setParams(p => ({ ...p, to: e.target.value, date: undefined }))} title="To date" />
+        </div>
+        <div className="mt-3 flex justify-end">
+          <button className="btn-secondary" onClick={doExport}>⬇ Export CSV</button>
         </div>
       </div>
       <div className="card overflow-x-auto">
@@ -250,26 +281,36 @@ function ScanSimulator() {
 }
 
 function LogsView() {
+  const toast = useToast();
   const [params, setParams] = useState({});
   const { data, loading } = useFetch('/attendance/logs', [params], { params });
+  const doExport = async () => {
+    const q = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v) q.set(k, v); });
+    const ok = await downloadCsv(`/attendance/export-logs?${q.toString()}`);
+    if (!ok) toast.error('Export failed');
+  };
   return (
     <div className="card overflow-x-auto">
-      <div className="flex flex-col gap-3 border-b border-slate-200 p-4 dark:border-slate-800 sm:flex-row">
-        <input className="input max-w-xs" type="date" defaultValue={new Date().toISOString().slice(0, 10)} onChange={e => setParams(p => ({ ...p, date: e.target.value }))} />
+      <div className="flex flex-col gap-3 border-b border-slate-200 p-4 dark:border-slate-800 sm:flex-row sm:items-center">
+        <input className="input max-w-xs" type="date" defaultValue={todayStr()} onChange={e => setParams(p => ({ ...p, date: e.target.value }))} />
         <select className="input max-w-xs" onChange={e => setParams(p => ({ ...p, direction: e.target.value || undefined }))}>
           <option value="">All directions</option><option value="IN">IN</option><option value="OUT">OUT</option>
         </select>
+        <button className="btn-secondary sm:ml-auto" onClick={doExport}>⬇ Export CSV</button>
       </div>
       {loading ? <PageLoader /> : data?.items.length === 0 ? <EmptyState title="No scans for this date" /> : (
-        <table className="w-full min-w-[800px]">
+        <table className="w-full min-w-[900px]">
           <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
-            <tr><th className="th">#</th><th className="th">Person</th><th className="th">Direction</th><th className="th">Device</th><th className="th">Location</th><th className="th">Time</th></tr>
+            <tr><th className="th">#</th><th className="th">Card ID</th><th className="th">Person</th><th className="th">Type</th><th className="th">In/Out</th><th className="th">Device</th><th className="th">Location</th><th className="th">Time</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {data?.items.map(l => (
               <tr key={l.id}>
                 <td className="td font-mono text-xs">{l.id}</td>
-                <td className="td font-medium">{l.full_name || <span className="font-mono text-xs text-rose-400">{l.raw_uid} (unknown)</span>}</td>
+                <td className="td font-mono text-xs">{l.raw_uid || '—'}</td>
+                <td className="td font-medium">{l.full_name || <span className="text-xs text-rose-400">unknown</span>}</td>
+                <td className="td capitalize text-xs">{l.person_type || '—'}</td>
                 <td className="td"><Badge status={l.direction === 'IN' ? 'present' : 'half_day'} /></td>
                 <td className="td font-mono text-xs">{l.device_id || '—'}</td>
                 <td className="td text-xs">{l.location || '—'}</td>
@@ -285,7 +326,7 @@ function LogsView() {
 
 function ManualMark({ open, onClose, onSaved }) {
   const toast = useToast();
-  const [form, setForm] = useState({ person_type: 'student', person_id: '', date: new Date().toISOString().slice(0, 10), in_time: '08:00', out_time: '', status: 'present' });
+  const [form, setForm] = useState({ person_type: 'student', person_id: '', date: todayStr(), in_time: '08:00', out_time: '', status: 'present' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
