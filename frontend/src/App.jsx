@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Students from './pages/Students';
+import JuniorNursery from './pages/JuniorNursery';
 import Employees from './pages/Employees';
 import Attendance from './pages/Attendance';
 import ScanLogs from './pages/ScanLogs';
@@ -62,6 +63,7 @@ function AppRoutes() {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/students" element={<Guard can={['manage_students', 'view_assigned_students', 'view_student_attendance']}><Students /></Guard>} />
+                <Route path="/junior-nursery" element={<Guard can={['manage_students']}><JuniorNursery /></Guard>} />
                 <Route path="/employees" element={<Guard can={['manage_employees', 'view_assigned_students']}><Employees /></Guard>} />
                 <Route path="/attendance" element={
                   <Guard can={['manage_attendance', 'view_attendance', 'view_own_attendance', 'view_student_attendance']}>

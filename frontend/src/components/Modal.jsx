@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 export default function Modal({ open, onClose, title, children, footer, width = 'max-w-2xl' }) {
   useEffect(() => {
@@ -14,7 +15,7 @@ export default function Modal({ open, onClose, title, children, footer, width = 
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="animate-fade-in absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} />
       <div className={`card animate-pop relative z-10 w-full ${width} max-h-[90vh] overflow-auto`}>
@@ -27,6 +28,7 @@ export default function Modal({ open, onClose, title, children, footer, width = 
         <div className="px-6 py-4">{children}</div>
         {footer && <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4 dark:border-slate-800">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
