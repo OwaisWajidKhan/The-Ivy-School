@@ -8,7 +8,9 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../config');
 
-const VERCEL_BLOB = !!process.env.BLOB_READ_WRITE_TOKEN;
+// Only use Vercel Blob on a real Vercel serverless runtime. A token present in a
+// local .env must not silently flip uploads from disk to Blob (which would fail).
+const VERCEL_BLOB = process.env.VERCEL === '1' && !!process.env.BLOB_READ_WRITE_TOKEN;
 
 function safeExt(name) {
   const m = String(name || '').match(/\.([a-zA-Z0-9]{1,8})$/);
