@@ -1,4 +1,5 @@
 const { db } = require('../db/schema');
+const timezone = require('./timezone');
 
 function ok(res, data = {}, status = 200) {
   return res.status(status).json({ success: true, data });
@@ -9,15 +10,11 @@ function fail(res, message = 'Something went wrong', status = 400, extra = {}) {
 }
 
 function todayStr() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return timezone.todayStr();
 }
 
 function nowStr() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return timezone.nowStr();
 }
 
 function parseDateTime(s) {

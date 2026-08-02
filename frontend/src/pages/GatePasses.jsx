@@ -4,7 +4,7 @@ import useFetch from '../lib/useFetch';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import Spinner, { PageLoader, EmptyState } from '../components/Spinner';
-import { fmtDate } from '../lib/format';
+import { fmtDate, todayStr } from '../lib/format';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
@@ -19,7 +19,7 @@ export default function GatePasses() {
   const { data, loading, reload } = useFetch('/gate-passes', [params], { params });
   const { data: students } = useFetch('/students', [], { params: { limit: 500 } });
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ student_id: '', reason: 'Early Pickup', exit_date: new Date().toISOString().slice(0, 10), guardian_name: '', guardian_cnic: '', guardian_relation: 'Parent', guardian_contact: '', reason_note: '' });
+  const [form, setForm] = useState({ student_id: '', reason: 'Early Pickup', exit_date: todayStr(), guardian_name: '', guardian_cnic: '', guardian_relation: 'Parent', guardian_contact: '', reason_note: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [verifyUid, setVerifyUid] = useState('');
@@ -75,7 +75,7 @@ export default function GatePasses() {
           <h2 className="text-xl font-bold">Student Gate Passes</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">{data?.total || 0} total passes</p>
         </div>
-        {canRequest && <button className="btn-primary" onClick={() => { setForm({ student_id: '', reason: 'Early Pickup', exit_date: new Date().toISOString().slice(0, 10), guardian_name: '', guardian_cnic: '', guardian_relation: 'Parent', guardian_contact: '', reason_note: '' }); setError(''); setOpen(true); }}>+ Request Gate Pass</button>}
+        {canRequest && <button className="btn-primary" onClick={() => { setForm({ student_id: '', reason: 'Early Pickup', exit_date: todayStr(), guardian_name: '', guardian_cnic: '', guardian_relation: 'Parent', guardian_contact: '', reason_note: '' }); setError(''); setOpen(true); }}>+ Request Gate Pass</button>}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

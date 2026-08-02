@@ -55,19 +55,21 @@ router.get('/', requirePermission('manage_devices'), async (req, res) => {
   ok(res, { items: rows, total, page, limit });
 });
 
-// People without an active card (assignment pool)
+// People eligible for a card (assignment pool). Returns all active people, each
+// carrying whether they already have an active card, so the dropdown is never
+// empty (admins can re-issue an existing issue decision).
 router.get('/pool', requirePermission('manage_devices'), async (req, res) => {
   const students = await db.prepare(
-    `SELECT s.id, s.full_name AS name, s.student_id AS code
+    `SELECT s.id, s.full_name AS name, s.student_id AS code,
+        EXISTS(SELECT 1 FROM rfid_cards c WHERE c.person_id = s.id AND c.card_type='student' AND c.status='active') AS has_active_card
      FROM students s
-     LEFT JOIN rfid_cards c ON c.person_id = s.id AND c.card_type='student' AND c.status='active'
-     WHERE s.status='active' AND c.id IS NULL ORDER BY s.full_name`
+     WHERE s.status='active' ORDER BY s.full_name`
   ).all();
   const employees = await db.prepare(
-    `SELECT e.id, e.full_name AS name, e.employee_id AS code
+    `SELECT e.id, e.full_name AS name, e.employee_id AS code,
+        EXISTS(SELECT 1 FROM rfid_cards c WHERE c.person_id = e.id AND c.card_type='employee' AND c.status='active') AS has_active_card
      FROM employees e
-     LEFT JOIN rfid_cards c ON c.person_id = e.id AND c.card_type='employee' AND c.status='active'
-     WHERE e.status='active' AND c.id IS NULL ORDER BY e.full_name`
+     WHERE e.status='active' ORDER BY e.full_name`
   ).all();
   ok(res, { students, employees });
 });
@@ -84,11 +86,20 @@ router.post('/assign', requirePermission('manage_devices'), async (req, res) => 
     : await db.prepare('SELECT * FROM employees WHERE id = ?').get(person_id);
   if (!person) return fail(res, 'Person not found', 404);
 
+  // Deactivate any existing active card for this person so the new issue replaces it
+  await db.prepare("UPDATE rfid_cards SET status='inactive' WHERE card_type = ? AND person_id = ? AND status='active'")
+    .run(card_type, person.id);
+  const hadOld = await db.prepare("SELECT COUNT(*) AS c FROM rfid_cards WHERE card_type = ? AND person_id = ?").get(card_type, person.id);
+
   const info = await db.prepare(
     "INSERT INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,datetime('now'),'active')"
   ).run(String(uid), card_type, person.id);
-  await db.prepare('UPDATE students SET rfid_uid = ? WHERE id = ?').run(String(uid), person.id);
-  audit(req.user, 'assign_card', 'rfid_card', info.lastInsertRowid, { uid, card_type, person: person.full_name }, req.ip);
+  await db.prepare(
+    card_type === 'student'
+      ? 'UPDATE students SET rfid_uid = ? WHERE id = ?'
+      : 'UPDATE employees SET rfid_uid = ? WHERE id = ?'
+  ).run(String(uid), person.id);
+  audit(req.user, 'assign_card', 'rfid_card', info.lastInsertRowid, { uid, card_type, person: person.full_name, reassigned: Number(hadOld.c) > 0 }, req.ip);
   ok(res, await db.prepare('SELECT * FROM rfid_cards WHERE id = ?').get(info.lastInsertRowid), 201);
 });
 
@@ -140,13 +151,14 @@ router.post('/bulk', requirePermission('manage_devices'), upload.single('file'),
   for (let i = 1; i < lines.length; i++) {
     const cols = lines[i].split(',');
     const uid = (cols[uidIdx] || '').trim();
-    const cardType = (cols[typeIdx] || '').trim();
+    const cardType = (cols[typeIdx] || '').trim().toLowerCase();
     const code = (cols[codeIdx] || '').trim();
-    if (!uid || !cardType || !code) { results.skipped++; continue; }
+    if (!uid || !cardType || !code) { results.errors.push(`Row ${i + 1}: missing uid, card_type or person_code`); results.skipped++; continue; }
+    if (!['student', 'employee'].includes(cardType)) { results.errors.push(`Row ${i + 1}: card_type must be 'student' or 'employee' (got '${cardType}')`); results.skipped++; continue; }
     const person = cardType === 'student'
       ? await db.prepare('SELECT * FROM students WHERE student_id = ?').get(code)
       : await db.prepare('SELECT * FROM employees WHERE employee_id = ?').get(code);
-    if (!person) { results.errors.push(`Row ${i}: no ${cardType} with code ${code}`); results.skipped++; continue; }
+    if (!person) { results.errors.push(`Row ${i + 1}: no ${cardType} with code ${code}`); results.skipped++; continue; }
     try {
       await db.prepare("INSERT INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,datetime('now'),'active')")
         .run(uid, cardType, person.id);
@@ -154,7 +166,7 @@ router.post('/bulk', requirePermission('manage_devices'), upload.single('file'),
       else await db.prepare('UPDATE employees SET rfid_uid = ? WHERE id = ?').run(uid, person.id);
       results.assigned++;
     } catch (e) {
-      if (String(e.message).includes('UNIQUE')) { results.errors.push(`Row ${i}: UID ${uid} already assigned`); results.skipped++; }
+      if (String(e.message).includes('UNIQUE')) { results.errors.push(`Row ${i + 1}: UID ${uid} already assigned`); results.skipped++; }
       else throw e;
     }
   }

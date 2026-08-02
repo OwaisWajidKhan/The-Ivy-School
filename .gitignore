@@ -8,6 +8,8 @@ backend/data/*.db*
 # Uploads
 backend/uploads/*
 !backend/uploads/.gitkeep
+backend/data/uploads/*
+!backend/data/uploads/.gitkeep
 
 # Logs
 *.log

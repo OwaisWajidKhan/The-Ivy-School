@@ -3,6 +3,7 @@ const router = express.Router();
 const { db } = require('../db/schema');
 const { requireAuth } = require('../middleware/auth');
 const { ok, fail, paginate } = require('../utils/helpers');
+const { toLocalSql } = require('../utils/timezone');
 
 router.use(requireAuth);
 
@@ -20,6 +21,7 @@ router.get('/', async (req, res) => {
   const total = (await db.prepare(`SELECT COUNT(*) AS c FROM notifications n ${whereSql}`).get(...params)).c;
   const unread = (await db.prepare(`SELECT COUNT(*) AS c FROM notifications n ${whereSql} AND n.read = 0`).get(...params)).c;
   const rows = await db.prepare(`SELECT * FROM notifications n ${whereSql} ORDER BY n.created_at DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
+  for (const r of rows) r.created_at = toLocalSql(r.created_at);
   ok(res, { items: rows, total, unread, page, limit });
 });
 

@@ -1,11 +1,28 @@
 import { useState } from 'react';
+import api from '../lib/api';
 import useFetch from '../lib/useFetch';
 import Badge from '../components/Badge';
 import { PageLoader, EmptyState } from '../components/Spinner';
-import { fmtDate, fmtHours, timeAgo, fmtMoney } from '../lib/format';
+import { fmtDate, fmtHours, timeAgo, fmtMoney, todayStr } from '../lib/format';
 
-function download(url) {
-  window.location.href = url;
+// Authenticated CSV download (Bearer token). Previously used window.location,
+// which drops the Authorization header and returned 401.
+async function download(url) {
+  try {
+    const res = await api.get(url, { responseType: 'blob' });
+    const blobUrl = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    const cd = res.headers['content-disposition'] || '';
+    const m = cd.match(/filename="?([^";]+)"?/);
+    a.download = m ? m[1] : 'report.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(blobUrl);
+  } catch (e) {
+    // surface via the browser (no toast available here); keep simple
+  }
 }
 
 function Tab({ active, onClick, children }) {
@@ -15,12 +32,12 @@ function Tab({ active, onClick, children }) {
 export default function Reports() {
   const now = new Date();
   const [tab, setTab] = useState('daily');
-  const [date, setDate] = useState(now.toISOString().slice(0, 10));
+  const [date, setDate] = useState(todayStr());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [personType, setPersonType] = useState('');
-  const [gpFrom, setGpFrom] = useState(now.toISOString().slice(0, 10));
-  const [gpTo, setGpTo] = useState(now.toISOString().slice(0, 10));
+  const [gpFrom, setGpFrom] = useState(todayStr());
+  const [gpTo, setGpTo] = useState(todayStr());
   const [gpStatus, setGpStatus] = useState('');
 
   const daily = useFetch('/reports/daily', [date], { params: { date } });

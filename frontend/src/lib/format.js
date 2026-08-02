@@ -7,6 +7,14 @@ export function fmtDate(dateStr, withTime = false) {
   return String(dateStr).slice(0, 10);
 }
 
+// Local calendar date (YYYY-MM-DD) in the browser's timezone, so date-input
+// defaults never fall a day behind/ahead because UTC is used.
+export function todayStr() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 export function fmtMoney(n) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n || 0);
 }

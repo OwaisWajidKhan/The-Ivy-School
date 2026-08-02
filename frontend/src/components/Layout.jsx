@@ -20,6 +20,7 @@ const ICONS = {
   holidays: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18M12 15l1.5 1.5L17 13" /></svg>,
   settings: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" /></svg>,
   audit: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-4" /></svg>,
+  scan: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" /><path d="M7 12h10" /></svg>,
   bell: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></svg>
 };
 
@@ -131,6 +132,7 @@ export default function Layout({ children }) {
       label: 'Operations',
       items: [
         { to: '/attendance', label: 'Attendance', icon: ICONS.attendance, show: hasPermission('manage_attendance') || hasPermission('view_attendance') || hasPermission('view_own_attendance') || hasPermission('view_student_attendance') },
+        { to: '/scans', label: 'Scan History', icon: ICONS.scan, show: hasPermission('manage_attendance') || hasPermission('view_attendance') },
         { to: '/leaves', label: 'Leaves', icon: ICONS.leaves, show: true },
         { to: '/gate-passes', label: 'Gate Passes', icon: ICONS.gatepass, show: hasPermission('manage_students') || hasPermission('approve_leave') || hasPermission('manage_attendance') || hasPermission('view_attendance') },
         { to: '/payroll', label: 'Payroll', icon: ICONS.payroll, show: hasPermission('manage_payroll') || hasPermission('generate_payroll') || hasPermission('view_own_attendance') },
@@ -225,10 +227,12 @@ export default function Layout({ children }) {
               </span>
             </button>
             <div className="relative">
-              <button onClick={() => setProfileOpen(o => !o)} className="hover-grow flex items-center gap-2 rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-800">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold uppercase text-white">
-                  {(user?.username || '?').charAt(0)}
-                </div>
+<button onClick={() => setProfileOpen(o => !o)} className="hover-grow flex items-center gap-2 rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-800">
+                {user?.avatar
+                  ? <img src={user.avatar} className="h-8 w-8 rounded-full object-cover" alt="" />
+                  : <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold uppercase text-white">
+                    {(user?.username || '?').charAt(0)}
+                  </div>}
               </button>
               {profileOpen && (
                 <>
@@ -238,7 +242,8 @@ export default function Layout({ children }) {
                       <p className="text-sm font-semibold capitalize">{user?.username}</p>
                       <p className="text-xs text-slate-500 capitalize">{user?.role?.replace(/_/g, ' ')}</p>
                     </div>
-                    <button className="btn-secondary w-full" onClick={() => { navigate('/settings'); setProfileOpen(false); }}>Settings</button>
+                    <button className="btn-secondary w-full" onClick={() => { navigate('/profile'); setProfileOpen(false); }}>Profile</button>
+                    <button className="btn-secondary mt-1 w-full" onClick={() => { navigate('/settings'); setProfileOpen(false); }}>Settings</button>
                     <button className="btn-danger mt-1 w-full" onClick={logout}>Sign out</button>
                   </div>
                 </>

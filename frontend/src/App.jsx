@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Students from './pages/Students';
 import Employees from './pages/Employees';
 import Attendance from './pages/Attendance';
+import ScanLogs from './pages/ScanLogs';
 import MyAttendance from './pages/MyAttendance';
 import Leaves from './pages/Leaves';
 import Payroll from './pages/Payroll';
@@ -18,6 +19,7 @@ import AuditLogs from './pages/AuditLogs';
 import GatePasses from './pages/GatePasses';
 import Cards from './pages/Cards';
 import HR from './pages/HR';
+import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
 import Spinner from './components/Spinner';
 
@@ -69,6 +71,7 @@ function AppRoutes() {
                   </Guard>
                 } />
                 <Route path="/attendance/me" element={<Guard can={['view_own_attendance']}><MyAttendance /></Guard>} />
+                <Route path="/scans" element={<Guard can={['view_attendance', 'manage_attendance']}><ScanLogs /></Guard>} />
                 <Route path="/leaves" element={<Leaves />} />
                 <Route path="/gate-passes" element={<Guard can={['manage_students', 'approve_leave', 'manage_attendance', 'view_attendance']}><GatePasses /></Guard>} />
                 <Route path="/hr" element={<Guard can={['manage_employees', 'manage_settings', 'manage_payroll', 'view_reports']}><HR /></Guard>} />
@@ -80,6 +83,7 @@ function AppRoutes() {
                 <Route path="/holidays" element={<Guard can={['manage_holidays']}><Holidays /></Guard>} />
                 <Route path="/settings" element={<Guard can={['manage_settings']}><Settings /></Guard>} />
                 <Route path="/audit" element={<Guard can={['view_audit_logs']}><AuditLogs /></Guard>} />
+                <Route path="/profile" element={<Profile />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Layout>

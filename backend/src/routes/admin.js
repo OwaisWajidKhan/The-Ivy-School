@@ -1,18 +1,27 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
 const { db, getSetting, setSetting } = require('../db/schema');
 const { requireAuth, requireRole, requirePermission } = require('../middleware/auth');
 const { ok, fail, audit, paginate } = require('../utils/helpers');
+const { toLocalSql } = require('../utils/timezone');
+const storage = require('../services/storageService');
 
 router.use(requireAuth);
+
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => (file && /image\//.test(file.mimetype)) ? cb(null, true) : cb(new Error('Only image uploads are allowed'))
+});
 
 // --- User management ---
 router.get('/users', requireRole('super_admin', 'school_admin'), async (req, res) => {
   const { page, limit, offset } = paginate(req.query.page, req.query.limit);
   const total = (await db.prepare('SELECT COUNT(*) AS c FROM users').get()).c;
   const rows = await db.prepare(
-    `SELECT u.id, u.username, u.email, u.person_type, u.person_id, u.status, u.last_login_at, u.created_at,
+    `SELECT u.id, u.username, u.email, u.avatar, u.person_type, u.person_id, u.status, u.last_login_at, u.created_at,
        r.name AS role_name,
        CASE WHEN u.person_type='employee' THEN e.full_name WHEN u.person_type='student' THEN s.full_name ELSE NULL END AS linked_name
      FROM users u
@@ -21,19 +30,22 @@ router.get('/users', requireRole('super_admin', 'school_admin'), async (req, res
      LEFT JOIN students s ON s.id = u.person_id AND u.person_type='student'
      ORDER BY u.id LIMIT ? OFFSET ?`
   ).all(limit, offset);
+  for (const r of rows) if (r.last_login_at) r.last_login_at = toLocalSql(r.last_login_at);
   ok(res, { items: rows, total, page, limit });
 });
 
-router.post('/users', requireRole('super_admin', 'school_admin'), async (req, res) => {
+router.post('/users', requireRole('super_admin', 'school_admin'), avatarUpload.single('avatar'), async (req, res) => {
   const { username, email, password, role, person_type, person_id, status } = req.body;
   if (!username || !password || !role) return fail(res, 'username, password and role required');
   const roleRow = await db.prepare('SELECT id FROM roles WHERE name = ?').get(role);
   if (!roleRow) return fail(res, 'Invalid role');
   const exists = await db.prepare('SELECT id FROM users WHERE username = ?').get(username);
   if (exists) return fail(res, 'Username already exists');
+  let avatar = null;
+  if (req.file) avatar = await storage.uploadBuffer({ buffer: req.file.buffer, folder: 'avatars', originalname: req.file.originalname, mimetype: req.file.mimetype });
   const info = await db.prepare(
-    'INSERT INTO users (username, email, password_hash, role_id, person_type, person_id, status) VALUES (?,?,?,?,?,?,?)'
-  ).run(username, email || null, bcrypt.hashSync(password, 10), roleRow.id, person_type || 'admin', person_id || null, status || 'active');
+    'INSERT INTO users (username, email, password_hash, role_id, person_type, person_id, status, avatar) VALUES (?,?,?,?,?,?,?,?)'
+  ).run(username, email || null, bcrypt.hashSync(password, 10), roleRow.id, person_type || 'admin', person_id || null, status || 'active', avatar);
   audit(req.user, 'create_user', 'user', info.lastInsertRowid, { username, role }, req.ip);
   ok(res, await db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid), 201);
 });
@@ -84,6 +96,7 @@ router.get('/audit', requirePermission('view_audit_logs'), async (req, res) => {
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const total = (await db.prepare(`SELECT COUNT(*) AS c FROM audit_logs ${whereSql}`).get(...params)).c;
   const rows = await db.prepare(`SELECT * FROM audit_logs ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
+  for (const r of rows) r.created_at = toLocalSql(r.created_at);
   ok(res, { items: rows, total, page, limit });
 });
 

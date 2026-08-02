@@ -3,6 +3,7 @@ const router = express.Router();
 const { db, getSetting } = require('../db/schema');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { ok, fail, audit, paginate, todayStr, nowStr } = require('../utils/helpers');
+const { toDbString } = require('../utils/timezone');
 const { processScan, lookupPerson } = require('../services/attendanceEngine');
 
 router.use(requireAuth);
@@ -21,7 +22,7 @@ router.post('/scan', async (req, res) => {
     deviceId: device_id || null,
     deviceName: device_name || null,
     location: location || null,
-    scanTime: timestamp || nowStr()
+    scanTime: timestamp ? toDbString(String(timestamp)) : nowStr()
   });
   if (!result.ok) {
     return res.status(result.code === 'DUPLICATE' ? 200 : 404).json({ success: false, message: result.message, code: result.code });
@@ -129,6 +130,79 @@ router.get('/logs', requirePermission('view_attendance'), async (req, res) => {
   ).all(...params, limit, offset);
   ok(res, { items: rows, total, page, limit });
 });
+
+// Export attendance summary as CSV (same filters as /summary)
+router.get('/export', requirePermission('view_attendance'), async (req, res) => {
+  const { page, limit, offset } = paginate(req.query.page || 1, req.query.limit || 5000);
+  const where = [];
+  const params = [];
+  if (req.query.date) { where.push('a.date = ?'); params.push(req.query.date); }
+  if (req.query.from) { where.push('a.date >= ?'); params.push(req.query.from); }
+  if (req.query.to) { where.push('a.date <= ?'); params.push(req.query.to); }
+  if (req.query.person_type) { where.push('a.person_type = ?'); params.push(req.query.person_type); }
+  if (req.query.status) { where.push('a.status = ?'); params.push(req.query.status); }
+  if (req.query.person_id) { where.push('a.person_id = ?'); params.push(req.query.person_id); }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const rows = await db.prepare(
+    `SELECT a.date, a.person_type,
+       CASE WHEN a.person_type='student' THEN st.full_name ELSE em.full_name END AS name,
+       CASE WHEN a.person_type='student' THEN st.student_id ELSE em.employee_id END AS code,
+       c.name AS class_name, sec.name AS section_name, em.designation, d.name AS department,
+       a.in_time, a.out_time, a.working_hours, a.overtime_hours, a.late_minutes, a.early_exit_minutes, a.status
+     FROM attendance_summary a
+     LEFT JOIN students st ON st.id = a.person_id AND a.person_type='student'
+     LEFT JOIN employees em ON em.id = a.person_id AND a.person_type='employee'
+     LEFT JOIN classes c ON c.id = st.class_id
+     LEFT JOIN sections sec ON sec.id = st.section_id
+     LEFT JOIN departments d ON d.id = em.department_id
+     ${whereSql} ORDER BY a.date DESC, a.person_type, name LIMIT ? OFFSET ?`
+  ).all(...params, limit, offset);
+  const csv = toCsv(rows);
+  const name = req.query.date ? req.query.date : `${req.query.from || 'start'}_${req.query.to || 'end'}`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="attendance-${name}.csv"`);
+  res.send(csv);
+});
+
+// Export raw scan logs as CSV (filters matching /logs)
+router.get('/export-logs', requirePermission('view_attendance'), async (req, res) => {
+  const { page, limit, offset } = paginate(req.query.page || 1, req.query.limit || 5000);
+  const where = [];
+  const params = [];
+  if (req.query.date) { where.push('l.date = ?'); params.push(req.query.date); }
+  if (req.query.person_type) { where.push('l.person_type = ?'); params.push(req.query.person_type); }
+  if (req.query.direction) { where.push('l.direction = ?'); params.push(req.query.direction); }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const rows = await db.prepare(
+    `SELECT l.id, l.scan_time,
+       CASE WHEN l.person_type='student' THEN st.full_name ELSE em.full_name END AS name,
+       l.raw_uid AS card_uid, l.person_type, l.direction, dv.device_name, dv.location
+     FROM attendance_logs l
+     LEFT JOIN students st ON st.id = l.person_id AND l.person_type='student'
+     LEFT JOIN employees em ON em.id = l.person_id AND l.person_type='employee'
+     LEFT JOIN devices dv ON dv.id = l.device_id
+     ${whereSql} ORDER BY l.id DESC LIMIT ? OFFSET ?`
+  )
+    .all(...params, limit, offset);
+  const csv = toCsv(rows);
+  const name = req.query.date || 'logs';
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="scan-logs-${name}.csv"`);
+  res.send(csv);
+});
+
+function csvEscape(v) {
+  const s = v === null || v === undefined ? '' : String(v);
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function toCsv(rows) {
+  const headers = Object.keys(rows[0] || {});
+  const lines = [headers.join(',')];
+  for (const r of rows) lines.push(headers.map(h => csvEscape(r[h])).join(','));
+  return '\uFEFF' + lines.join('\r\n');
+}
 
 // Own attendance (teacher / employee / student / parent)
 router.get('/me', async (req, res) => {
