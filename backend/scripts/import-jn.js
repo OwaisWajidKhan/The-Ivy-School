@@ -95,6 +95,10 @@ async function importJN() {
   const insertUser = await db.prepare(
     "INSERT INTO users (username, email, password_hash, role_id, person_type, person_id) VALUES (?,?,?,?,?,?)"
   );
+  const updateParent = await db.prepare(`
+    UPDATE parents SET full_name = ?, phone = ?, email = ?, education = ?, profession = ?,
+      employer = ?, marital_status = ?, address = ? WHERE id = ?
+  `);
 
   const report = { added: 0, existing: 0, parents: 0, logins: 0, errors: [] };
   for (let i = 0; i < rows.length; i++) {
@@ -132,26 +136,31 @@ async function importJN() {
       }
     }
 
-    // parents (father + mother)
+    // parents (father + mother). A profile is created if the name OR any
+    // contact/profession field is present, so we don't drop fathers whose
+    // name is blank in the source but whose phone/email/education are filled.
+    const hasAny = (row, keys) => keys.some(k => row[k] && String(row[k]).trim());
     const parentRows = [];
-    if (r.father_name) parentRows.push(['father', r]);
+    if (hasAny(r, ['father_name', 'father_phone', 'father_email', 'father_education', 'father_profession'])) parentRows.push(['father', r]);
     if (r.mother_name) parentRows.push(['mother', r]);
     for (const [relation, pr] of parentRows) {
-      const prefix = relation === 'father' ? '' : 'mother';
+      const prefix = relation; // 'father' or 'mother' — map to father_*/mother_* fields
       const existing = await db.prepare('SELECT id FROM parents WHERE student_id = ? AND relation = ?').get(studentDbId, relation);
-      if (existing) continue;
-      await insertParent.run(
-        studentDbId, relation,
-        pr[`${prefix}_name`] || null,
-        pr[`${prefix}_phone`] || null,
-        pr[`${prefix}_email`] || null,
-        pr[`${prefix}_education`] || null,
-        pr[`${prefix}_profession`] || null,
-        pr[`${prefix}_employer`] || null,
-        relation === 'father' ? (pr.marital_status || null) : null,
-        pr.address || null
+      const vals = (full_name, phone, email, education, profession, employer, marital, address) => [
+        full_name || null, phone || null, email || null, education || null,
+        profession || null, employer || null, marital || null, address || null
+      ];
+      const parentVals = vals(
+        pr[`${prefix}_name`], pr[`${prefix}_phone`], pr[`${prefix}_email`],
+        pr[`${prefix}_education`], pr[`${prefix}_profession`], pr[`${prefix}_employer`],
+        relation === 'father' ? pr.marital_status : null, pr.address
       );
-      report.parents++;
+      if (existing) {
+        await updateParent.run(...parentVals, existing.id);
+      } else {
+        await insertParent.run(studentDbId, relation, ...parentVals);
+        report.parents++;
+      }
     }
 
     // parent login
