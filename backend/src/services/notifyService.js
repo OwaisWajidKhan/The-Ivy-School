@@ -59,11 +59,11 @@ async function notifyPerson({ personType, personId, type, title, message }) {
   }
 }
 
-// Notify all active admins (school admin / super admin / hr).
+// Notify all active admin users.
 async function notifyAdmins(type, title, message) {
   const admins = await db.prepare(
     `SELECT u.id, u.email FROM users u JOIN roles r ON r.id = u.role_id
-     WHERE u.status='active' AND r.name IN ('super_admin','school_admin','hr')`
+     WHERE u.status='active' AND r.name = 'admin'`
   ).all();
   for (const a of admins) {
     await notifyInApp({ recipientType: 'admin', recipientId: a.id, type, title, message });

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { db } = require('../db/schema');
-const { requireAuth, requirePermission } = require('../middleware/auth');
+const { requireAuth, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { ok, fail, audit, paginate } = require('../utils/helpers');
 const storage = require('../services/storageService');
 
@@ -21,7 +21,7 @@ const selectBase = `
   LEFT JOIN shifts s ON s.id = e.shift_id
 `;
 
-router.get('/', requirePermission('manage_employees'), async (req, res) => {
+router.get('/', requireAnyPermission('manage_employees', 'view_employees'), async (req, res) => {
   const { page, limit, offset } = paginate(req.query.page, req.query.limit);
   const where = [];
   const params = [];
@@ -39,7 +39,7 @@ router.get('/', requirePermission('manage_employees'), async (req, res) => {
   ok(res, { items: rows, total, page, limit });
 });
 
-router.get('/:id', requirePermission('manage_employees'), async (req, res) => {
+router.get('/:id', requireAnyPermission('manage_employees', 'view_employees'), async (req, res) => {
   const e = await db.prepare(`${selectBase} WHERE e.id = ?`).get(req.params.id);
   if (!e) return fail(res, 'Employee not found', 404);
   const attendance = await db.prepare(

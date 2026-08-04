@@ -10,11 +10,11 @@ export default function Users() {
   const toast = useToast();
   const { data, loading, reload } = useFetch('/admin/users');
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ username: '', email: '', password: '', role: 'school_admin', person_type: 'admin', person_id: '', status: 'active' });
+  const [form, setForm] = useState({ username: '', email: '', password: '', role: 'admin', person_type: 'admin', person_id: '', status: 'active' });
   const [avatarFile, setAvatarFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const roles = ['super_admin', 'school_admin', 'hr', 'teacher', 'employee', 'parent'];
+  const roles = ['admin', 'finance'];
 
   const submit = async (e) => {
     e.preventDefault();
@@ -36,7 +36,7 @@ export default function Users() {
           <h2 className="text-xl font-bold">Users & Admins</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">{data?.total || 0} user accounts</p>
         </div>
-        <button className="btn-primary" onClick={() => { setForm({ username: '', email: '', password: '', role: 'school_admin', person_type: 'admin', person_id: '', status: 'active' }); setAvatarFile(null); setOpen(true); }}>+ Create User</button>
+        <button className="btn-primary" onClick={() => { setForm({ username: '', email: '', password: '', role: 'admin', person_type: 'admin', person_id: '', status: 'active' }); setAvatarFile(null); setOpen(true); }}>+ Create User</button>
       </div>
 
       <div className="card overflow-x-auto">
@@ -50,7 +50,7 @@ export default function Users() {
                 <tr key={u.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40">
                   <td className="td font-medium">{u.username}</td>
                   <td className="td text-xs">{u.email || '—'}</td>
-                  <td className="td"><Badge status={u.role_name === 'super_admin' ? 'active' : u.role_name === 'school_admin' ? 'present' : u.role_name === 'hr' ? 'overtime' : u.role_name === 'teacher' ? 'late' : u.role_name === 'parent' ? 'half_day' : 'pending'} /></td>
+                  <td className="td"><Badge status={u.role_name === 'admin' ? 'active' : u.role_name === 'finance' ? 'present' : 'pending'} /></td>
                   <td className="td text-xs capitalize">{u.person_type} {u.linked_name ? `· ${u.linked_name}` : ''}</td>
                   <td className="td text-xs">{u.last_login_at || '—'}</td>
                   <td className="td"><Badge status={u.status} /></td>

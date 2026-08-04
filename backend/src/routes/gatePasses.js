@@ -168,7 +168,7 @@ async function notifyAdminsGatePass(student, reason, exitDate) {
   const message = `${student.full_name} requested a ${reason} gate pass for ${exitDate}.`;
   const admins = await db.prepare(
     `SELECT u.id, u.email FROM users u JOIN roles r ON r.id = u.role_id
-     WHERE u.status='active' AND r.name IN ('super_admin','school_admin')`
+     WHERE u.status='active' AND r.name IN ('admin')`
   ).all();
   for (const a of admins) {
     await notifyInApp({ recipientType: 'admin', recipientId: a.id, type: 'gate_pass', title, message });

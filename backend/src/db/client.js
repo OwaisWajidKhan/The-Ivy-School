@@ -355,6 +355,7 @@ function ensureReady() {
         }
       } else {
         await seed.ensurePhase2ReferenceData();
+        await seed.ensureRoleModel();
       }
     })().catch((e) => {
       readyPromise = null;

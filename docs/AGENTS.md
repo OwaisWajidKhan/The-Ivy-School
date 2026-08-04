@@ -186,12 +186,10 @@ D:\The Ivy School\
 ## Seed login credentials
 | Role | Username | Password |
 |------|----------|----------|
-| Super Admin | superadmin | Admin@123 |
-| School Admin | admin | Admin@123 |
-| HR | hr | Admin@123 |
-| Teacher | teacher_2 | Teacher@123 |
-| Employee | emp1 | Emp@123 |
-| Parent | parent1 | Parent@123 |
+| Admin (full access) | admin | Admin@123 |
+| Finance (attendance + payroll + reports) | finance | Finance@123 |
+
+Only these two roles exist: `admin` (full CRUD/settings) and `finance` (read-only people + attendance, manages payroll, views/exports reports).
 
 ## Useful commands
 ```bash

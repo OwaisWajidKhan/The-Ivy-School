@@ -8,7 +8,6 @@ import JuniorNursery from './pages/JuniorNursery';
 import Employees from './pages/Employees';
 import Attendance from './pages/Attendance';
 import ScanLogs from './pages/ScanLogs';
-import MyAttendance from './pages/MyAttendance';
 import Leaves from './pages/Leaves';
 import Payroll from './pages/Payroll';
 import Reports from './pages/Reports';
@@ -49,9 +48,6 @@ function Guard({ can, children }) {
 }
 
 function AppRoutes() {
-  const { user } = useAuth();
-  const isRole = (...roles) => roles.includes(user?.role);
-
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
@@ -62,26 +58,19 @@ function AppRoutes() {
             <Layout>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
-                <Route path="/students" element={<Guard can={['manage_students', 'view_assigned_students', 'view_student_attendance']}><Students /></Guard>} />
+                <Route path="/students" element={<Guard can={['manage_students', 'view_students']}><Students /></Guard>} />
                 <Route path="/junior-nursery" element={<Guard can={['manage_students']}><JuniorNursery /></Guard>} />
-                <Route path="/employees" element={<Guard can={['manage_employees', 'view_assigned_students']}><Employees /></Guard>} />
-                <Route path="/attendance" element={
-                  <Guard can={['manage_attendance', 'view_attendance', 'view_own_attendance', 'view_student_attendance']}>
-                    {(user && (isRole('teacher', 'employee', 'parent')) && !user.permissions?.some(p => ['manage_attendance', 'view_attendance'].includes(p)))
-                      ? <MyAttendance />
-                      : <Attendance />}
-                  </Guard>
-                } />
-                <Route path="/attendance/me" element={<Guard can={['view_own_attendance']}><MyAttendance /></Guard>} />
+                <Route path="/employees" element={<Guard can={['manage_employees', 'view_employees']}><Employees /></Guard>} />
+                <Route path="/attendance" element={<Guard can={['manage_attendance', 'view_attendance']}><Attendance /></Guard>} />
                 <Route path="/scans" element={<Guard can={['view_attendance', 'manage_attendance']}><ScanLogs /></Guard>} />
                 <Route path="/leaves" element={<Leaves />} />
                 <Route path="/gate-passes" element={<Guard can={['manage_students', 'approve_leave', 'manage_attendance', 'view_attendance']}><GatePasses /></Guard>} />
-                <Route path="/hr" element={<Guard can={['manage_employees', 'manage_settings', 'manage_payroll', 'view_reports']}><HR /></Guard>} />
+                <Route path="/hr" element={<Guard can={['manage_employees', 'manage_settings']}><HR /></Guard>} />
                 <Route path="/cards" element={<Guard can={['manage_devices', 'manage_attendance']}><Cards /></Guard>} />
-                <Route path="/payroll" element={<Guard can={['manage_payroll', 'generate_payroll', 'view_own_attendance']}><Payroll /></Guard>} />
-                <Route path="/reports" element={<Guard can={['view_reports', 'view_all_reports']}><Reports /></Guard>} />
+                <Route path="/payroll" element={<Guard can={['manage_payroll', 'generate_payroll']}><Payroll /></Guard>} />
+                <Route path="/reports" element={<Guard can={['view_reports']}><Reports /></Guard>} />
                 <Route path="/devices" element={<Guard can={['manage_devices']}><Devices /></Guard>} />
-                <Route path="/users" element={<Guard can={['manage_settings', 'create_admins']}><Users /></Guard>} />
+                <Route path="/users" element={<Guard can={['manage_settings']}><Users /></Guard>} />
                 <Route path="/holidays" element={<Guard can={['manage_holidays']}><Holidays /></Guard>} />
                 <Route path="/settings" element={<Guard can={['manage_settings']}><Settings /></Guard>} />
                 <Route path="/audit" element={<Guard can={['view_audit_logs']}><AuditLogs /></Guard>} />

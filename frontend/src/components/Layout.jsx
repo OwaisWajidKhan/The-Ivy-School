@@ -125,26 +125,26 @@ export default function Layout({ children }) {
     {
       label: 'People',
       items: [
-        { to: '/students', label: 'Students', icon: ICONS.students, show: hasPermission('manage_students') || hasPermission('view_assigned_students') || hasPermission('view_student_attendance') },
+        { to: '/students', label: 'Students', icon: ICONS.students, show: hasPermission('manage_students') || hasPermission('view_students') },
         { to: '/junior-nursery', label: 'Junior Nursery', icon: ICONS.nursery, show: hasPermission('manage_students') },
-        { to: '/employees', label: 'Employees', icon: ICONS.employees, show: hasPermission('manage_employees') || hasPermission('view_assigned_students') }
+        { to: '/employees', label: 'Employees', icon: ICONS.employees, show: hasPermission('manage_employees') || hasPermission('view_employees') }
       ]
     },
     {
       label: 'Operations',
       items: [
-        { to: '/attendance', label: 'Attendance', icon: ICONS.attendance, show: hasPermission('manage_attendance') || hasPermission('view_attendance') || hasPermission('view_own_attendance') || hasPermission('view_student_attendance') },
+        { to: '/attendance', label: 'Attendance', icon: ICONS.attendance, show: hasPermission('manage_attendance') || hasPermission('view_attendance') },
         { to: '/scans', label: 'Scan History', icon: ICONS.scan, show: hasPermission('manage_attendance') || hasPermission('view_attendance') },
         { to: '/leaves', label: 'Leaves', icon: ICONS.leaves, show: true },
         { to: '/gate-passes', label: 'Gate Passes', icon: ICONS.gatepass, show: hasPermission('manage_students') || hasPermission('approve_leave') || hasPermission('manage_attendance') || hasPermission('view_attendance') },
-        { to: '/payroll', label: 'Payroll', icon: ICONS.payroll, show: hasPermission('manage_payroll') || hasPermission('generate_payroll') || hasPermission('view_own_attendance') },
-        { to: '/reports', label: 'Reports', icon: ICONS.reports, show: hasPermission('view_reports') || hasPermission('view_all_reports') }
+        { to: '/payroll', label: 'Payroll', icon: ICONS.payroll, show: hasPermission('manage_payroll') || hasPermission('generate_payroll') },
+        { to: '/reports', label: 'Reports', icon: ICONS.reports, show: hasPermission('view_reports') }
       ]
     },
     {
       label: 'Human Resource',
       items: [
-        { to: '/hr', label: 'HR Management', icon: ICONS.hr, show: hasPermission('manage_employees') || hasPermission('manage_settings') || hasPermission('manage_payroll') || hasPermission('view_reports') }
+        { to: '/hr', label: 'HR Management', icon: ICONS.hr, show: hasPermission('manage_employees') || hasPermission('manage_settings') }
       ]
     },
     {

@@ -151,7 +151,7 @@ router.delete('/holidays/:id', requirePermission('manage_holidays'), async (req,
 });
 
 // --- Roles (for admin management) ---
-router.get('/roles', requireRole('super_admin', 'school_admin'), async (req, res) => {
+router.get('/roles', requireRole('admin'), async (req, res) => {
   ok(res, await db.prepare('SELECT id, name, description, permissions FROM roles').all());
 });
 

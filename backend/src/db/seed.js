@@ -68,25 +68,17 @@ async function ensurePhase2ReferenceData() {
 }
 
 const perm = {
-  super_admin: [
+  admin: [
     'manage_schools', 'create_admins', 'manage_licenses', 'view_all_reports',
-    'manage_students', 'manage_employees', 'manage_attendance', 'view_attendance',
-    'manage_leave', 'manage_payroll', 'generate_payroll', 'manage_devices',
-    'manage_settings', 'manage_holidays', 'approve_leave', 'export_reports',
-    'view_reports', 'view_audit_logs'
+    'manage_students', 'view_students', 'manage_employees', 'view_employees',
+    'manage_attendance', 'view_attendance', 'manage_leave', 'approve_leave',
+    'manage_payroll', 'generate_payroll', 'manage_devices', 'manage_settings',
+    'manage_holidays', 'export_reports', 'view_reports', 'view_audit_logs', 'manage_shifts'
   ],
-  school_admin: [
-    'manage_students', 'manage_employees', 'manage_attendance', 'view_attendance',
-    'manage_leave', 'approve_leave', 'manage_payroll', 'generate_payroll',
-    'manage_devices', 'manage_settings', 'manage_holidays', 'view_reports', 'export_reports'
-  ],
-  hr: [
-    'view_attendance', 'manage_leave', 'manage_payroll', 'view_reports',
-    'generate_payroll', 'approve_leave', 'manage_shifts', 'export_reports'
-  ],
-  teacher: ['view_own_attendance', 'view_assigned_students', 'request_leave'],
-  employee: ['view_own_attendance', 'view_working_hours', 'request_leave'],
-  parent: ['view_student_attendance']
+  finance: [
+    'view_students', 'view_employees', 'view_attendance',
+    'manage_payroll', 'generate_payroll', 'view_reports', 'export_reports'
+  ]
 };
 
 async function seed() {
@@ -147,12 +139,10 @@ async function seed() {
   const mainDevId = (await db.prepare("SELECT id FROM devices WHERE device_id = 'DEV-MAIN-01'").get()).id;
   const staffDevId = (await db.prepare("SELECT id FROM devices WHERE device_id = 'DEV-STAFF-01'").get()).id;
 
-  // Users (create admins first)
+  // Users (only admin + finance logins)
   const insertUser = await db.prepare('INSERT INTO users (username, email, password_hash, role_id, person_type, person_id) VALUES (?,?,?,?,?,?)');
-  const adminPw = hashPassword('Admin@123');
-  const superAdminId = (await insertUser.run('superadmin', 'superadmin@school.com', adminPw, roles.super_admin, 'admin', null)).lastInsertRowid;
-  const schoolAdminId = (await insertUser.run('admin', 'admin@school.com', adminPw, roles.school_admin, 'admin', null)).lastInsertRowid;
-  const hrUserId = (await insertUser.run('hr', 'hr@school.com', adminPw, roles.hr, 'admin', null)).lastInsertRowid;
+  await insertUser.run('admin', 'admin@school.com', hashPassword('Admin@123'), roles.admin, 'admin', null);
+  await insertUser.run('finance', 'finance@school.com', hashPassword('Finance@123'), roles.finance, 'admin', null);
 
   // Students
   const insertStudent = await db.prepare(`
@@ -220,21 +210,6 @@ async function seed() {
       .run(e[1], 'employee', info.lastInsertRowid, iso(new Date()), 'active');
     employeeIds.push(info.lastInsertRowid);
   }
-
-  // Teacher users with linked person
-  const teachers = await db.prepare('SELECT * FROM employees WHERE designation LIKE ?').all('%Teacher%');
-  for (const t of teachers.slice(0, 3)) {
-    const uname = `teacher_${t.id}`;
-    if (!await db.prepare('SELECT id FROM users WHERE username = ?').get(uname)) {
-      await insertUser.run(uname, `${uname}@school.com`, hashPassword('Teacher@123'), roles.teacher, 'employee', t.id);
-    }
-  }
-  // One generic employee user
-  const someEmp = await db.prepare('SELECT * FROM employees WHERE designation = ?').get('Security Guard');
-  await insertUser.run('emp1', 'emp1@school.com', hashPassword('Emp@123'), roles.employee, 'employee', someEmp.id);
-  // Parent user
-  const someStudent = await db.prepare('SELECT * FROM students ORDER BY id LIMIT 1').get();
-  await insertUser.run('parent1', 'parent1@school.com', hashPassword('Parent@123'), roles.parent, 'student', someStudent.id);
 
   // Holidays for this & next month
   const insertHoliday = await db.prepare('INSERT OR IGNORE INTO holidays (name, date, type, description) VALUES (?,?,?,?)');
@@ -327,16 +302,58 @@ async function seed() {
 
   await db.exec('COMMIT');
   console.log('Seed complete.');
-  console.log('Super Admin : superadmin / Admin@123');
-  console.log('School Admin: admin / Admin@123');
-  console.log('HR          : hr / Admin@123');
-  console.log('Teacher     : teacher_2 / Teacher@123');
-  console.log('Employee    : emp1 / Emp@123');
-  console.log('Parent      : parent1 / Parent@123');
+  console.log('Admin   : admin / Admin@123');
+  console.log('Finance : finance / Finance@123');
+}
+
+// Idempotent migration from the old 6-role model to exactly two roles
+// (admin + finance). Safe to run on every startup so existing databases are
+// upgraded in place: students/employees/attendance data is never touched.
+async function ensureRoleModel() {
+  await ensureSchema();
+  await db.prepare("UPDATE roles SET name = 'admin' WHERE name = 'school_admin'").run();
+
+  const upsertRole = async (name, perms) => {
+    const existing = await db.prepare('SELECT id FROM roles WHERE name = ?').get(name);
+    const payload = JSON.stringify(perms);
+    if (existing) await db.prepare('UPDATE roles SET permissions = ? WHERE name = ?').run(payload, name);
+    else await db.prepare('INSERT INTO roles (name, description, permissions) VALUES (?,?,?)').run(name, `${name} role`, payload);
+  };
+  await upsertRole('admin', perm.admin);
+  await upsertRole('finance', perm.finance);
+
+  const nullOutUser = async (id) => {
+    await db.prepare('UPDATE leaves SET approved_by = NULL WHERE approved_by = ?').run(id);
+    await db.prepare('UPDATE gate_passes SET requested_by = NULL WHERE requested_by = ?').run(id);
+    await db.prepare('UPDATE gate_passes SET approved_by = NULL WHERE approved_by = ?').run(id);
+    await db.prepare('UPDATE gate_passes SET verified_by = NULL WHERE verified_by = ?').run(id);
+    await db.prepare('UPDATE employee_documents SET uploaded_by = NULL WHERE uploaded_by = ?').run(id);
+    await db.prepare('UPDATE payroll SET approved_by = NULL WHERE approved_by = ?').run(id);
+  };
+
+  for (const name of ['super_admin', 'hr', 'teacher', 'employee', 'parent']) {
+    const role = await db.prepare('SELECT id FROM roles WHERE name = ?').get(name);
+    if (!role) continue;
+    const doomed = await db.prepare('SELECT id FROM users WHERE role_id = ?').all(role.id);
+    for (const u of doomed) {
+      await nullOutUser(u.id);
+      await db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
+    }
+    await db.prepare('DELETE FROM roles WHERE id = ?').run(role.id);
+  }
+
+  if (!await db.prepare('SELECT id FROM users WHERE username = ?').get('finance')) {
+    const finRole = await db.prepare("SELECT id FROM roles WHERE name = 'finance'").get();
+    if (finRole) {
+      await db.prepare('INSERT INTO users (username, email, password_hash, role_id, person_type, person_id, status) VALUES (?,?,?,?,?,?,?)')
+        .run('finance', 'finance@school.com', hashPassword('Finance@123'), finRole.id, 'admin', null, 'active');
+    }
+  }
 }
 
 module.exports = seed;
 module.exports.ensurePhase2ReferenceData = ensurePhase2ReferenceData;
+module.exports.ensureRoleModel = ensureRoleModel;
 
 if (require.main === module) {
   seed().catch(e => { console.error(e); process.exit(1); });
