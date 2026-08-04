@@ -17,7 +17,7 @@ const avatarUpload = multer({
 });
 
 // --- User management ---
-router.get('/users', requireRole('super_admin', 'school_admin'), async (req, res) => {
+router.get('/users', requireRole('admin'), async (req, res) => {
   const { page, limit, offset } = paginate(req.query.page, req.query.limit);
   const total = (await db.prepare('SELECT COUNT(*) AS c FROM users').get()).c;
   const rows = await db.prepare(
@@ -34,7 +34,7 @@ router.get('/users', requireRole('super_admin', 'school_admin'), async (req, res
   ok(res, { items: rows, total, page, limit });
 });
 
-router.post('/users', requireRole('super_admin', 'school_admin'), avatarUpload.single('avatar'), async (req, res) => {
+router.post('/users', requireRole('admin'), avatarUpload.single('avatar'), async (req, res) => {
   const { username, email, password, role, person_type, person_id, status } = req.body;
   if (!username || !password || !role) return fail(res, 'username, password and role required');
   const roleRow = await db.prepare('SELECT id FROM roles WHERE name = ?').get(role);
@@ -50,7 +50,7 @@ router.post('/users', requireRole('super_admin', 'school_admin'), avatarUpload.s
   ok(res, await db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid), 201);
 });
 
-router.put('/users/:id', requireRole('super_admin', 'school_admin'), async (req, res) => {
+router.put('/users/:id', requireRole('admin'), async (req, res) => {
   const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
   if (!user) return fail(res, 'User not found', 404);
   const b = req.body;
@@ -67,18 +67,18 @@ router.put('/users/:id', requireRole('super_admin', 'school_admin'), async (req,
   ok(res, await db.prepare('SELECT * FROM users WHERE id = ?').get(user.id));
 });
 
-router.delete('/users/:id', requireRole('super_admin', 'school_admin'), async (req, res) => {
+router.delete('/users/:id', requireRole('admin'), async (req, res) => {
   if (req.params.id == req.user.id) return fail(res, 'You cannot delete your own account');
   await db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
   ok(res, { message: 'User deleted' });
 });
 
 // --- Settings ---
-router.get('/settings', requireRole('super_admin', 'school_admin'), async (req, res) => {
+router.get('/settings', requireRole('admin'), async (req, res) => {
   ok(res, await db.prepare('SELECT key, value FROM settings ORDER BY key').all());
 });
 
-router.put('/settings', requireRole('super_admin', 'school_admin'), async (req, res) => {
+router.put('/settings', requireRole('admin'), async (req, res) => {
   const { key, value } = req.body;
   if (!key) return fail(res, 'key required');
   await setSetting(key, value);

@@ -4,7 +4,7 @@ const multer = require('multer');
 const router = express.Router();
 const { db } = require('../db/schema');
 const config = require('../config');
-const { signAccessToken, signRefreshToken, requireAuth, loadUser, getRoleName } = require('../middleware/auth');
+const { signAccessToken, signRefreshToken, requireAuth, loadUser, getRoleName, getPermissions } = require('../middleware/auth');
 const { ok, fail, audit } = require('../utils/helpers');
 const storage = require('../services/storageService');
 
@@ -45,7 +45,7 @@ router.post('/login', async (req, res) => {
   await db.prepare('INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?,?,?)').run(user.id, refreshToken, expiresAt);
 
   audit(user, 'login', 'user', user.id, { role: user.role_name }, req.ip);
-  ok(res, { accessToken, refreshToken, user: publicUser(user) });
+  ok(res, { accessToken, refreshToken, user: { ...publicUser(user), permissions: await getPermissions(user.role_name) } });
 });
 
 router.post('/refresh', async (req, res) => {
@@ -60,7 +60,7 @@ router.post('/refresh', async (req, res) => {
   const user = await loadUser(row.user_id);
   if (!user || user.status !== 'active') return fail(res, 'User not found', 401);
   const accessToken = signAccessToken(user);
-  ok(res, { accessToken, user: publicUser(user) });
+  ok(res, { accessToken, user: { ...publicUser(user), permissions: await getPermissions(user.role_name) } });
 });
 
 router.post('/logout', requireAuth, async (req, res) => {

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { db } = require('../db/schema');
-const { requireAuth, requirePermission } = require('../middleware/auth');
+const { requireAuth, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { ok, fail, audit, paginate, todayStr } = require('../utils/helpers');
 const storage = require('../services/storageService');
 
@@ -26,7 +26,7 @@ const selectBase = `
 `;
 
 // List students with filters
-router.get('/', requirePermission('manage_students'), async (req, res) => {
+router.get('/', requireAnyPermission('manage_students', 'view_students'), async (req, res) => {
   const { page, limit, offset } = paginate(req.query.page, req.query.limit);
   const where = [];
   const params = [];
@@ -174,7 +174,7 @@ router.get('/jn', requirePermission('manage_students'), async (req, res) => {
 });
 
 // Student detail + attendance
-router.get('/:id', requirePermission('manage_students'), async (req, res) => {
+router.get('/:id', requireAnyPermission('manage_students', 'view_students'), async (req, res) => {
   const s = await db.prepare(`${selectBase} WHERE s.id = ?`).get(req.params.id);
   if (!s) return fail(res, 'Student not found', 404);
   const attendance = await db.prepare(

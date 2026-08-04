@@ -80,12 +80,24 @@ function requireRole(...roles) {
   };
 }
 
+// Allow a request through if the user has ANY of the given permissions.
+function requireAnyPermission(...permissions) {
+  return async (req, res, next) => {
+    if (!req.user) return fail(res, 'Authentication required', 401);
+    const perms = req.user.permissions || [];
+    if (permissions.some((p) => perms.includes(p))) return next();
+    audit(req.user, 'denied_permission', null, null, { anyOf: permissions });
+    return fail(res, 'You do not have permission to perform this action', 403);
+  };
+}
+
 module.exports = {
   signAccessToken,
   signRefreshToken,
   requireAuth,
   requirePermission,
   requireRole,
+  requireAnyPermission,
   getRoleName,
   getPermissions,
   loadUser

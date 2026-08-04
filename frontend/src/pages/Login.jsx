@@ -6,12 +6,8 @@ import Spinner from '../components/Spinner';
 import { useToast } from '../context/ToastContext';
 
 const DEMO = [
-  { u: 'superadmin', p: 'Admin@123', label: 'Super Admin' },
-  { u: 'admin', p: 'Admin@123', label: 'School Admin' },
-  { u: 'hr', p: 'Admin@123', label: 'HR' },
-  { u: 'teacher_2', p: 'Teacher@123', label: 'Teacher' },
-  { u: 'emp1', p: 'Emp@123', label: 'Employee' },
-  { u: 'parent1', p: 'Parent@123', label: 'Parent' }
+  { u: 'admin', p: 'Admin@123', label: 'Admin' },
+  { u: 'finance', p: 'Finance@123', label: 'Finance' }
 ];
 
 export default function Login() {
