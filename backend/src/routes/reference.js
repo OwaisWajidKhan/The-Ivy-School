@@ -24,7 +24,7 @@ router.post('/classes', requirePermission('manage_settings'), async (req, res) =
     audit(req.user, 'create_class', 'class', info.lastInsertRowid, { name }, req.ip);
     ok(res, await db.prepare('SELECT * FROM classes WHERE id = ?').get(info.lastInsertRowid), 201);
   } catch (e) {
-    if (String(e.message).includes('UNIQUE')) return fail(res, 'Class already exists');
+    if (String(e.message).toLowerCase().includes('unique')) return fail(res, 'Class already exists');
     throw e;
   }
 });
@@ -50,7 +50,7 @@ router.post('/sections', requirePermission('manage_settings'), async (req, res) 
     const info = await db.prepare('INSERT INTO sections (class_id, name) VALUES (?,?)').run(class_id, name);
     ok(res, await db.prepare('SELECT * FROM sections WHERE id = ?').get(info.lastInsertRowid), 201);
   } catch (e) {
-    if (String(e.message).includes('UNIQUE')) return fail(res, 'Section already exists for this class');
+    if (String(e.message).toLowerCase().includes('unique')) return fail(res, 'Section already exists for this class');
     throw e;
   }
 });
@@ -76,7 +76,7 @@ router.post('/departments', requirePermission('manage_settings'), async (req, re
     const info = await db.prepare('INSERT INTO departments (name, description) VALUES (?,?)').run(name, description || null);
     ok(res, await db.prepare('SELECT * FROM departments WHERE id = ?').get(info.lastInsertRowid), 201);
   } catch (e) {
-    if (String(e.message).includes('UNIQUE')) return fail(res, 'Department already exists');
+    if (String(e.message).toLowerCase().includes('unique')) return fail(res, 'Department already exists');
     throw e;
   }
 });
@@ -100,7 +100,7 @@ router.post('/shifts', requirePermission('manage_settings'), async (req, res) =>
     ).run(name, start_time, end_time, parseInt(grace_minutes) || 0, parseFloat(half_day_threshold_hours) || 4, description || null);
     ok(res, await db.prepare('SELECT * FROM shifts WHERE id = ?').get(info.lastInsertRowid), 201);
   } catch (e) {
-    if (String(e.message).includes('UNIQUE')) return fail(res, 'Shift already exists');
+    if (String(e.message).toLowerCase().includes('unique')) return fail(res, 'Shift already exists');
     throw e;
   }
 });
@@ -126,7 +126,7 @@ router.delete('/shifts/:id', requirePermission('manage_settings'), async (req, r
 router.get('/holidays', async (req, res) => {
   const { year } = req.query;
   const rows = year
-    ? await db.prepare('SELECT * FROM holidays WHERE strftime(\'%Y\', date) = ? ORDER BY date').all(year)
+    ? await db.prepare("SELECT * FROM holidays WHERE date LIKE ? ORDER BY date").all(`${year}%`)
     : await db.prepare('SELECT * FROM holidays ORDER BY date DESC').all();
   ok(res, rows);
 });
@@ -140,7 +140,7 @@ router.post('/holidays', requirePermission('manage_holidays'), async (req, res) 
     audit(req.user, 'create_holiday', 'holiday', info.lastInsertRowid, { name, date }, req.ip);
     ok(res, await db.prepare('SELECT * FROM holidays WHERE id = ?').get(info.lastInsertRowid), 201);
   } catch (e) {
-    if (String(e.message).includes('UNIQUE')) return fail(res, 'Holiday already exists for this date');
+    if (String(e.message).toLowerCase().includes('unique')) return fail(res, 'Holiday already exists for this date');
     throw e;
   }
 });

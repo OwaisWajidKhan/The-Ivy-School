@@ -4,7 +4,7 @@ const { db } = require('./client');
 
 // Keep data/upload directories available for local (file-based) mode.
 // Schema creation + migrations now live in client.js (ensureSchema).
-if (!process.env.TURSO_DATABASE_URL) {
+if (!process.env.TURSO_DATABASE_URL && !process.env.DATABASE_URL) {
   fs.mkdirSync(config.dataDir, { recursive: true });
   fs.mkdirSync(config.uploadDir, { recursive: true });
 }

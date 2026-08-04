@@ -19,7 +19,7 @@ const avatarUpload = multer({
 
 // Login with brute-force protection
 router.post('/login', async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password } = req.body || {};
   if (!username || !password) return fail(res, 'Username and password are required');
 
   const user = await db.prepare(

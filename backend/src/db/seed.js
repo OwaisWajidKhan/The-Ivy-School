@@ -1,6 +1,7 @@
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const { db, setSetting } = require('./schema');
+const { ensureSchema } = require('./client');
 const config = require('../config');
 
 function dateStr(d) {
@@ -91,6 +92,11 @@ const perm = {
 async function seed() {
   console.log('Seeding database...');
 
+  // Ensure the schema exists BEFORE opening the transaction: on Postgres the
+  // schema DDL must not run inside a transaction that may later roll back (and
+  // an error there would abort the whole tx). Idempotent + memoized.
+  await ensureSchema();
+
   await db.exec('BEGIN');
 
   const insertRole = await db.prepare('INSERT OR IGNORE INTO roles (name, description, permissions) VALUES (?, ?, ?)');
@@ -138,13 +144,15 @@ async function seed() {
   await insertDevice.run('Main Gate Reader', 'DEV-MAIN-01', 'Main Entrance', 'online', iso(new Date()));
   await insertDevice.run('Staff Gate Reader', 'DEV-STAFF-01', 'Staff Entrance', 'online', iso(new Date()));
   await insertDevice.run('Transport Depot', 'DEV-BUS-01', 'Bus Stand', 'offline', iso(new Date(Date.now() - 86400000)));
+  const mainDevId = (await db.prepare("SELECT id FROM devices WHERE device_id = 'DEV-MAIN-01'").get()).id;
+  const staffDevId = (await db.prepare("SELECT id FROM devices WHERE device_id = 'DEV-STAFF-01'").get()).id;
 
   // Users (create admins first)
   const insertUser = await db.prepare('INSERT INTO users (username, email, password_hash, role_id, person_type, person_id) VALUES (?,?,?,?,?,?)');
   const adminPw = hashPassword('Admin@123');
-  const superAdminId = await insertUser.run('superadmin', 'superadmin@school.com', adminPw, roles.super_admin, 'admin', null).lastInsertRowid;
-  const schoolAdminId = await insertUser.run('admin', 'admin@school.com', adminPw, roles.school_admin, 'admin', null).lastInsertRowid;
-  const hrUserId = await insertUser.run('hr', 'hr@school.com', adminPw, roles.hr, 'admin', null).lastInsertRowid;
+  const superAdminId = (await insertUser.run('superadmin', 'superadmin@school.com', adminPw, roles.super_admin, 'admin', null)).lastInsertRowid;
+  const schoolAdminId = (await insertUser.run('admin', 'admin@school.com', adminPw, roles.school_admin, 'admin', null)).lastInsertRowid;
+  const hrUserId = (await insertUser.run('hr', 'hr@school.com', adminPw, roles.hr, 'admin', null)).lastInsertRowid;
 
   // Students
   const insertStudent = await db.prepare(`
@@ -260,7 +268,7 @@ async function seed() {
   const nowIso = iso(new Date());
 
   const insertSummary = await db.prepare(`
-    INSERT INTO attendance_summary (person_type, person_id, date, in_time, out_time, status, working_hours, overtime_hours, late_minutes, early_exit_minutes)
+    INSERT OR IGNORE INTO attendance_summary (person_type, person_id, date, in_time, out_time, status, working_hours, overtime_hours, late_minutes, early_exit_minutes)
     VALUES (?,?,?,?,?,?,?,?,?,?)
   `);
   const insertLog = await db.prepare(`
@@ -294,8 +302,8 @@ async function seed() {
       if (isHalf) status = 'half_day';
       const lateMin = isLate ? Math.max(0, Math.floor((inHr - 8.0) * 60)) : 0;
       await insertSummary.run(ptype, pid, ds, inTime, outTime, status, wh, 0, lateMin, 0);
-      await insertLog.run(ptype, pid, ptype === 'student' ? 1 : 2, ptype === 'student' ? 'Main Entrance' : 'Staff Entrance', 'IN', `${ds} ${inTime}:00`, ds, ptype === 'student' ? `STU${String(pid).padStart(6, '0')}` : `EMP${String(pid).padStart(6, '0')}`);
-      await insertLog.run(ptype, pid, ptype === 'student' ? 1 : 2, ptype === 'student' ? 'Main Entrance' : 'Staff Entrance', 'OUT', `${ds} ${outTime}:00`, ds, ptype === 'student' ? `STU${String(pid).padStart(6, '0')}` : `EMP${String(pid).padStart(6, '0')}`);
+      await insertLog.run(ptype, pid, ptype === 'student' ? mainDevId : staffDevId, ptype === 'student' ? 'Main Entrance' : 'Staff Entrance', 'IN', `${ds} ${inTime}:00`, ds, ptype === 'student' ? `STU${String(pid).padStart(6, '0')}` : `EMP${String(pid).padStart(6, '0')}`);
+      await insertLog.run(ptype, pid, ptype === 'student' ? mainDevId : staffDevId, ptype === 'student' ? 'Main Entrance' : 'Staff Entrance', 'OUT', `${ds} ${outTime}:00`, ds, ptype === 'student' ? `STU${String(pid).padStart(6, '0')}` : `EMP${String(pid).padStart(6, '0')}`);
     }
   }
 
@@ -314,7 +322,7 @@ async function seed() {
     const lateMin = inH >= 8 ? (inH - 8) * 60 + inM : 0;
     const status = lateMin > 15 ? 'late' : 'present';
     await insertSummary.run(ptype, pid, today, inTime, null, status, 0, 0, lateMin, 0);
-    await insertLog.run(ptype, pid, ptype === 'student' ? 1 : 2, ptype === 'student' ? 'Main Entrance' : 'Staff Entrance', 'IN', `${today} ${inTime}:00`, today, ptype === 'student' ? `STU${String(pid).padStart(6, '0')}` : `EMP${String(pid).padStart(6, '0')}`);
+    await insertLog.run(ptype, pid, ptype === 'student' ? mainDevId : staffDevId, ptype === 'student' ? 'Main Entrance' : 'Staff Entrance', 'IN', `${today} ${inTime}:00`, today, ptype === 'student' ? `STU${String(pid).padStart(6, '0')}` : `EMP${String(pid).padStart(6, '0')}`);
   }
 
   await db.exec('COMMIT');

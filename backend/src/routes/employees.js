@@ -74,7 +74,7 @@ router.post('/', upload.single('photo'), requirePermission('manage_employees'), 
     audit(req.user, 'create_employee', 'employee', info.lastInsertRowid, { name: b.full_name }, req.ip);
     ok(res, await db.prepare(`${selectBase} WHERE e.id = ?`).get(info.lastInsertRowid), 201);
   } catch (e) {
-    if (String(e.message).includes('UNIQUE')) return fail(res, 'Duplicate record (employee id or RFID UID already exists)');
+    if (String(e.message).toLowerCase().includes('unique')) return fail(res, 'Duplicate record (employee id or RFID UID already exists)');
     throw e;
   }
 });

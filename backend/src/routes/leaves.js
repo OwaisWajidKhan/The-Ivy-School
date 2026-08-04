@@ -89,7 +89,8 @@ router.put('/:id/status', requirePermission('approve_leave'), async (req, res) =
     if (leaf.person_type === 'employee') {
       const emp = await db.prepare('SELECT leave_balance FROM employees WHERE id = ?').get(leaf.person_id);
       if (emp) {
-        await db.prepare('UPDATE employees SET leave_balance = MAX(0, leave_balance - ?) WHERE id = ?').run(leaf.days, leaf.person_id);
+        const newBalance = Math.max(0, (Number(emp.leave_balance) || 0) - (Number(leaf.days) || 0));
+        await db.prepare('UPDATE employees SET leave_balance = ? WHERE id = ?').run(newBalance, leaf.person_id);
       }
     }
   } else if (status === 'rejected' || status === 'cancelled') {

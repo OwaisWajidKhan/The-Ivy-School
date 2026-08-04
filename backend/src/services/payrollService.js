@@ -2,8 +2,11 @@ const { db } = require('../db/schema');
 const { todayStr } = require('../utils/helpers');
 
 async function countWorkingDays(month, year) {
-  const holidays = (await db.prepare('SELECT date FROM holidays WHERE strftime(\'%m\', date) = ? AND strftime(\'%Y\', date) = ?')
-    .all(String(month).padStart(2, '0'), String(year))).map(r => r.date);
+  const holidays = (await db.prepare('SELECT date FROM holidays WHERE date BETWEEN ? AND ?')
+    .all(
+      `${year}-${String(month).padStart(2, '0')}-01`,
+      `${year}-${String(month).padStart(2, '0')}-31`
+    )).map(r => r.date);
   let count = 0;
   const daysInMonth = new Date(year, month, 0).getDate();
   for (let d = 1; d <= daysInMonth; d++) {

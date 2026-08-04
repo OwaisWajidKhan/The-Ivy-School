@@ -166,7 +166,7 @@ router.post('/bulk', requirePermission('manage_devices'), upload.single('file'),
       else await db.prepare('UPDATE employees SET rfid_uid = ? WHERE id = ?').run(uid, person.id);
       results.assigned++;
     } catch (e) {
-      if (String(e.message).includes('UNIQUE')) { results.errors.push(`Row ${i + 1}: UID ${uid} already assigned`); results.skipped++; }
+      if (String(e.message).toLowerCase().includes('unique')) { results.errors.push(`Row ${i + 1}: UID ${uid} already assigned`); results.skipped++; }
       else throw e;
     }
   }
