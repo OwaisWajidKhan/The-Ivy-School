@@ -16,9 +16,10 @@
 
 const fs = require('fs');
 const config = require('../config');
-const { SCHEMA, MIGRATIONS } = require('./schema-ddl');
+const { SCHEMA, SCHEMA_PG, MIGRATIONS } = require('./schema-ddl');
 
 const TURSO = !!process.env.TURSO_DATABASE_URL;
+const PG = !TURSO && !!process.env.DATABASE_URL;
 
 let impl = null;
 let schemaPromise = null;
@@ -51,6 +52,56 @@ function splitStatements(sql) {
   }
   if (cur.trim()) out.push(cur.trim());
   return out;
+}
+
+// Convert SQLite positional ? placeholders to Postgres $1..$n, skipping '?'
+// characters inside single-quoted string literals.
+function pgParams(sql) {
+  let n = 0;
+  let out = '';
+  let inStr = false;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (inStr) {
+      out += ch;
+      if (ch === "'") {
+        if (sql[i + 1] === "'") { out += sql[++i]; }
+        else inStr = false;
+      }
+      continue;
+    }
+    if (ch === "'") { inStr = true; out += ch; continue; }
+    if (ch === '?') { out += '$' + (++n); continue; }
+    out += ch;
+  }
+  return { sql: out, count: n };
+}
+
+// Translate SQLite-flavoured statements for Postgres:
+//   - INSERT OR IGNORE INTO ... -> INSERT INTO ... ON CONFLICT DO NOTHING
+//   - positional ? -> $1..$n
+// `datetime('now')` needs no translation because the PG schema creates a
+// `datetime()` shim function that returns the same UTC timestamp string.
+function translatePg(sql) {
+  const ignore = /^\s*INSERT\s+OR\s+IGNORE\s+INTO/i.test(sql);
+  let s = ignore ? sql.replace(/^\s*INSERT\s+OR\s+IGNORE\s+INTO/i, 'INSERT INTO') : sql;
+  const { sql: out, count } = pgParams(s);
+  return { sql: ignore ? `${out} ON CONFLICT DO NOTHING` : out, count };
+}
+
+function postgresDriver() {
+  const pg = require('pg');
+  // int8 (bigint) is returned as a string by node-postgres; the app expects JS
+  // numbers (ids, counts). Precision loss beyond 2^53 is irrelevant here.
+  pg.types.setTypeParser(20, (v) => (v === null ? null : parseInt(v, 10)));
+  const pool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000
+  });
+  pool.on('error', (e) => console.error('PostgreSQL pool error:', e.message));
+  return { pool };
 }
 
 function localDriver() {
@@ -130,6 +181,102 @@ function initImpl() {
         return r.rows;
       }
     };
+  } else if (PG) {
+    const { pool } = postgresDriver();
+    impl = {
+      type: 'postgres',
+      pool,
+      tx: null,
+      idTables: null,
+      async hasId(table) {
+        if (!this.idTables) {
+          const sql = "SELECT table_name FROM information_schema.columns WHERE column_name = 'id' AND table_schema = current_schema()";
+          const r = this.tx
+            ? await this.tx.query(sql)
+            : await pool.query(sql);
+          this.idTables = new Set(r.rows.map((x) => x.table_name));
+        }
+        return this.idTables.has(table);
+      },
+      async exec(sql) {
+        const s = String(sql).trim();
+        if (/^BEGIN\b/i.test(s)) {
+          if (this.tx) return;
+          const c = await pool.connect();
+          await c.query('BEGIN');
+          this.tx = c;
+          return;
+        }
+        if (/^COMMIT\b/i.test(s)) {
+          if (this.tx) {
+            const t = this.tx;
+            this.tx = null;
+            try { await t.query('COMMIT'); } finally { t.release(); }
+          }
+          return;
+        }
+        if (/^ROLLBACK\b/i.test(s)) {
+          if (this.tx) {
+            const t = this.tx;
+            this.tx = null;
+            try { await t.query('ROLLBACK'); } finally { t.release(); }
+          }
+          return;
+        }
+        const c = this.tx || await pool.connect();
+        try {
+          for (const stmt of splitStatements(s)) {
+            if (stmt) await c.query(stmt);
+          }
+        } finally {
+          if (!this.tx) c.release();
+        }
+      },
+      async run(sql, args) {
+        const isInsert = /^\s*INSERT/i.test(String(sql).trim());
+        const t = translatePg(sql);
+        let q = t.sql;
+        let returningId = false;
+        if (isInsert) {
+          const m = /^\s*INSERT\s+INTO\s+(\w+)/i.exec(q);
+          if (m && await this.hasId(m[1])) {
+            q = `${q} RETURNING id`;
+            returningId = true;
+          }
+        }
+        const c = this.tx || await pool.connect();
+        try {
+          const r = await c.query(q, Array.from(args).slice(0, t.count));
+          return {
+            rows: [],
+            rowsAffected: normalize(r.rowCount ?? 0),
+            lastInsertRowid: returningId ? normalize((r.rows && r.rows[0] && r.rows[0].id) ?? 0) : 0
+          };
+        } finally {
+          if (!this.tx) c.release();
+        }
+      },
+      async get(sql, args) {
+        const t = translatePg(sql);
+        const c = this.tx || await pool.connect();
+        try {
+          const r = await c.query(t.sql, Array.from(args).slice(0, t.count));
+          return r.rows[0];
+        } finally {
+          if (!this.tx) c.release();
+        }
+      },
+      async all(sql, args) {
+        const t = translatePg(sql);
+        const c = this.tx || await pool.connect();
+        try {
+          const r = await c.query(t.sql, Array.from(args).slice(0, t.count));
+          return r.rows;
+        } finally {
+          if (!this.tx) c.release();
+        }
+      }
+    };
   } else {
     const { db } = localDriver();
     impl = {
@@ -165,10 +312,12 @@ function ensureSchema() {
   if (!schemaPromise) {
     schemaPromise = (async () => {
       const i = initImpl();
-      await i.exec(SCHEMA);
+      await i.exec(i.type === 'postgres' ? SCHEMA_PG : SCHEMA);
       for (const m of MIGRATIONS) {
         try {
-          const cols = await i.all(`PRAGMA table_info(${m.table})`, []);
+          const cols = i.type === 'postgres'
+            ? await i.all('SELECT column_name AS name FROM information_schema.columns WHERE table_name = ?', [m.table])
+            : await i.all(`PRAGMA table_info(${m.table})`, []);
           if (!cols.some((c) => c && c.name === m.column)) {
             await i.exec(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.ddl};`);
           }
@@ -196,7 +345,14 @@ function ensureReady() {
       const seed = require('./seed');
       if (!row || Number(row.c) === 0) {
         console.log('Empty database detected — seeding...');
-        await seed();
+        try {
+          await seed();
+        } catch (e) {
+          // Roll back any open transaction (PG leaves the tx client checked out
+          // otherwise). Harmless no-op for SQLite/Turso.
+          try { await db.exec('ROLLBACK'); } catch (_) {}
+          throw e;
+        }
       } else {
         await seed.ensurePhase2ReferenceData();
       }
@@ -240,7 +396,7 @@ function makeStatement(sql) {
     },
     run: async (...args) => {
       await ensureSchema();
-      const r = i.run(sql, Array.from(args));
+      const r = await i.run(sql, Array.from(args));
       return { changes: r.rowsAffected, lastInsertRowid: r.lastInsertRowid };
     }
   };
@@ -265,21 +421,22 @@ const db = {
     i.exec('BEGIN');
     try {
       for (const s of stmts) {
-        if (typeof s === 'string') i.exec(s);
-        else i.run(s.sql, s.args || []);
+        if (typeof s === 'string') await i.exec(s);
+        else await i.run(s.sql, s.args || []);
       }
-      i.exec('COMMIT');
+      await i.exec('COMMIT');
     } catch (e) {
-      i.exec('ROLLBACK');
+      await i.exec('ROLLBACK');
       throw e;
     }
   },
   close() {
     if (!impl) return;
     if (impl.type === 'turso') impl.client.close();
+    else if (impl.type === 'postgres') impl.pool.end();
     else impl.db.close();
   },
-  backend: () => (impl ? impl.type : TURSO ? 'turso' : 'local')
+  backend: () => (impl ? impl.type : TURSO ? 'turso' : PG ? 'postgres' : 'local')
 };
 
 module.exports = { db, ensureReady, ensureSchema };

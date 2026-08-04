@@ -212,7 +212,7 @@ router.post('/', upload.single('photo'), requirePermission('manage_students'), a
     const created = await db.prepare(`${selectBase} WHERE s.id = ?`).get(info.lastInsertRowid);
     ok(res, created, 201);
   } catch (e) {
-    if (String(e.message).includes('UNIQUE')) return fail(res, 'Duplicate record (student id, admission number or RFID UID already exists)');
+    if (String(e.message).toLowerCase().includes('unique')) return fail(res, 'Duplicate record (student id, admission number or RFID UID already exists)');
     throw e;
   }
 });

@@ -119,7 +119,8 @@ router.post('/verify-exit', async (req, res) => {
   // Record an attendance OUT for the student today (early exit) if a summary exists
   const summary = await db.prepare("SELECT * FROM attendance_summary WHERE person_type='student' AND person_id=? AND date=?").get(student.id, todayStr());
   if (summary && !summary.out_time) {
-    await db.prepare("UPDATE attendance_summary SET out_time = strftime('%H:%M', 'now'), status='early_exit' WHERE id=?").run(summary.id);
+    const utcHhmm = new Date().toISOString().slice(11, 16);
+    await db.prepare("UPDATE attendance_summary SET out_time = ?, status='early_exit' WHERE id=?").run(utcHhmm, summary.id);
   }
   const nowT = nowStr().slice(11, 16);
   await db.prepare(
