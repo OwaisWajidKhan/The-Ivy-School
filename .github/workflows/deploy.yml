@@ -49,6 +49,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           source: "frontend/dist/"
           target: "/opt/ivy-school/frontend"
+          strip_components: 1
 
       - name: Install deps and restart backend
         uses: appleboy/ssh-action@v1.2.5
