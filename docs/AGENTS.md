@@ -1,7 +1,7 @@
 # AGENTS.md — Project Progress Tracker
 
 > School Attendance Management System (Cloud-Based) — "The Ivy School"
-> Last updated: 2026-08-03
+> Last updated: 2026-08-05
 ## How to use
 This file tracks the current state of the build. Update the "Current status", progress checklists, and "Known issues" sections after each working session. Run commands from the `backend/` or `frontend/` directories as noted.
 
@@ -15,6 +15,8 @@ This file tracks the current state of the build. Update the "Current status", pr
   $env:Path = "$env:LOCALAPPDATA\GitHubDesktop\app-3.6.3\resources\app\git\cmd;$env:Path"
   ```
   (or `Get-ChildItem "$env:LOCALAPPDATA\GitHubDesktop" -Recurse -Filter git.exe` to find the current version).
+- **`gh` CLI** is at `C:\Program Files\GitHub CLI` (add to PATH in a session to use: `$env:Path = "C:\Program Files\GitHub CLI;$env:Path"`). Authenticated as `OwaisKhan17`; used for PRs, secrets, and inspecting runs.
+- **Windows OpenSSH** (`C:\Windows\System32\OpenSSH`) for VPS access. Local root key: `C:\Users\owais\.ssh\id_ed25519`. Connect: `ssh -i C:\Users\owais\.ssh\id_ed25519 root@31.97.189.215`.
 - Start backend detached (survives shell session):
   ```powershell
   Start-Process -FilePath node -ArgumentList 'src/index.js' -WorkingDirectory 'D:\The Ivy School\backend' -RedirectStandardOutput "$env:TEMP\opencode\backend.log" -RedirectStandardError "$env:TEMP\opencode\backend.log.err" -WindowStyle Hidden
@@ -39,7 +41,20 @@ This file tracks the current state of the build. Update the "Current status", pr
   git pull
   git branch -d feat/<short-description>
   ```
+- **⚠ Merging a PR ships to production automatically** — see "Production deployment (Hostinger VPS + auto-deploy)" below. Only merge reviewed, tested code; a failed deploy shows as a red Actions run (the workflow aborts the restart + health check on failure).
 - Keep the working tree clean on `main`: never leave uncommitted changes or stray test artifacts (`test.db`, `test-turso.db`, `data/*.db`) in the repo.
+
+## Production deployment (Hostinger VPS + auto-deploy)
+- **VPS**: Hostinger KVM 2, Ubuntu 24.04, 8 GB RAM, 95 GB disk — IP `31.97.189.215`, hostname `srv1879653.hstgr.cloud` (plain Ubuntu; no hosting panel, no Docker). Installed: Node 24.19, PostgreSQL 16.14, Nginx 1.24, PM2 7.0.3, certbot 2.9, Pgweb 0.17.
+- **Layout**: code at `/opt/ivy-school/` (`backend/` + `frontend/dist/`). Backend runs as PM2 process `ivy-backend` (boot-persistent via `pm2 startup` systemd unit `pm2-root`) listening on :5000; nginx terminates TLS and proxies. Frontend is served as static files from `/opt/ivy-school/frontend/dist`.
+- **Site**: https://theivyschool.tech (HTTP→HTTPS 301, `www.` works, Let's Encrypt cert auto-renews via `certbot.timer`).
+- **Auto-deploy (GitHub Actions, `.github/workflows/deploy.yml`)**: every push/merge to `main` — or manual "Run workflow" — builds the frontend, ships `backend/` + `frontend/dist` to the VPS, runs `npm ci --omit=dev`, restarts PM2, and fails unless `/api/health` returns OK. **So merging a PR deploys it; never merge unreviewed/untested code.**
+  - Repo secrets required: `VPS_HOST`, `VPS_USERNAME` (`root`), `VPS_SSH_KEY` (dedicated ed25519 deploy key, authorized in `/root/.ssh/authorized_keys` alongside the local root key).
+  - Quirks learned the hard way: scp-action must be pinned `v0.1.7` (tag `v0.1.9` doesn't exist); frontend step needs `strip_components: 1` or dist lands at `frontend/frontend/dist`.
+- **Server secrets (never commit)**: `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `FRONTEND_URL=https://theivyschool.tech`, `PORT=5000` live in `/opt/ivy-school/backend/.env`. Deploys never touch `.env` (it's gitignored, so it's absent from the CI checkout).
+- **Database**: PostgreSQL `ivy_school` on 127.0.0.1:5432 (user `ivy`; password only in the server `.env`). Listens on localhost only — remote access deliberately disabled. Local dev still uses SQLite (`node:sqlite`); the server auto-selects Postgres from `DATABASE_URL`. Postgres superuser access via `sudo -u postgres psql`.
+- **Web DB manager (Pgweb)**: https://theivyschool.tech:8443 — basic-auth credentials are defined in `/etc/systemd/system/pgweb.service` (unit binds 127.0.0.1:8081, proxied by nginx). Not committed anywhere.
+- Timestamps are naive UTC app-wide; the PG schema adds a `datetime()` shim so `datetime('now')` keeps working.
 
 ## Project structure
 ```
@@ -161,6 +176,12 @@ D:\The Ivy School\
 - **Modal bug**: page wrapper `animate-slide-up` uses `fill-mode: both`, leaving `transform` that traps `position:fixed` modals → render modals via `createPortal(..., document.body)` (`frontend/src/components/Modal.jsx`).
 - **Uploads storage**: Blob mode is only used on a real Vercel runtime (`process.env.VERCEL === '1'`), so a token in a local `.env` no longer forces Vercel Blob. Blob `uploadBuffer` returns the **absolute public URL** from `put()` (avoids a `/uploads` redirect that 404'd on serverless); delete/serve updated.
 - **Vercel Blob store**: set to **Public** access (chosen at creation; access can't be changed after). New token `vercel_blob_rw_…` in root `.env` (scope-limited, private) + Vercel env var.
+
+## Session 2026-08-05 (Production VPS + auto-deploy) — merged via PRs #10–#14
+- **PostgreSQL backend (PR #10)**: `backend/src/db/client.js` became a PG-capable facade (`translatePg` SQL/file translation, tx-aware `hasId`/queries, `RETURNING`, `ensureSchema` + `SCHEMA_PG` + migrations), with a `datetime()` shim for `datetime('now')`. Seed (device IDs looked up by name, awaited user inserts, `INSERT OR IGNORE` summary), schema-DDL, payroll, and all routes migrated to PG-compatible SQL; case-insensitive UNIQUE checks; `auth.js` hardened against empty bodies. Deployed manually to the VPS and verified end-to-end on Postgres.
+- **CI/CD (PRs #11–#14)**: added `.github/workflows/deploy.yml` (auto-deploy on merge to `main`). Iteration fixes: pinned `scp-action@v0.1.7` (tag `v0.1.9` doesn't exist → first run failed at "Set up job"), repaired a conflict-resolution corruption that swapped the scp/ssh actions, and added `strip_components: 1` so `frontend/dist` isn't nested. First fully green run shipped the fresh frontend + backend and passed `/api/health`.
+- **HTTPS**: certbot `--nginx -d theivyschool.tech -d www.theivyschool.tech`; auto-renew timer active. Pgweb web DB manager exposed at :8443.
+- **Note**: the 96 MB `docs/Masterfile-2025-2026.xlsx` is gitignored but still in git history — optional history purge later.
 
 ## Seed login credentials
 | Role | Username | Password |
