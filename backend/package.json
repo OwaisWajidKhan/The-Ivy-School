@@ -9,6 +9,7 @@
     "dev": "node --watch src/index.js",
     "seed": "node src/db/seed.js",
     "sync:prod": "node scripts/sync-prod-to-local.js",
+    "import:sheet": "node scripts/import-sheet.js",
     "build:frontend": "cd .. && npm.cmd --prefix frontend run build",
     "bundle": "bun build src/index.js --compile --define \"process.env.IVY_PACKAGED='1'\" --outfile build/TheIvySchool.exe",
     "package": "node scripts/package.js",
