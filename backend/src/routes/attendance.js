@@ -225,14 +225,15 @@ router.get('/me', async (req, res) => {
   if (!personId || !['student', 'employee'].includes(personType)) {
     return fail(res, 'No attendance record linked to this account');
   }
-  const { from, to } = req.query;
+  const { from, to, limit } = req.query;
   const where = ['a.person_type = ?', 'a.person_id = ?'];
   const params = [personType, personId];
   if (from) { where.push('a.date >= ?'); params.push(from); }
   if (to) { where.push('a.date <= ?'); params.push(to); }
+  const cap = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : 60;
   const rows = await db.prepare(
-    `SELECT * FROM attendance_summary a WHERE ${where.join(' AND ')} ORDER BY a.date DESC LIMIT 60`
-  ).all(...params);
+    `SELECT * FROM attendance_summary a WHERE ${where.join(' AND ')} ORDER BY a.date DESC LIMIT ?`
+  ).all(...params, cap);
   ok(res, { personType, personId, rows });
 });
 

@@ -3,6 +3,7 @@ import api from '../lib/api';
 import useFetch from '../lib/useFetch';
 import Modal from '../components/Modal';
 import Spinner, { PageLoader, EmptyState } from '../components/Spinner';
+import Pagination, { useClientPagination } from '../components/Pagination';
 import { useToast } from '../context/ToastContext';
 
 const empty = {
@@ -26,8 +27,10 @@ export default function Students() {
   const [deleting, setDeleting] = useState(null);
 
   useEffect(() => {
-    setParams({ q: query || undefined, class_id: classId || undefined });
+    setParams({ q: query || undefined, class_id: classId || undefined, limit: 10000 });
   }, [query, classId]);
+
+  const { paginated, page, setPage, pageCount, total } = useClientPagination(data?.items);
 
   const loadSections = async (classId, autoSelect = false) => {
     if (!classId) { setForm(f => ({ ...f, section_id: '' })); return; }
@@ -97,7 +100,8 @@ export default function Students() {
       </div>
 
       <div className="card overflow-x-auto">
-        {loading ? <PageLoader /> : data?.items.length === 0 ? <EmptyState title="No students found" subtitle="Try adjusting your filters or add a new student." /> : (
+        {loading ? <PageLoader /> : total === 0 ? <EmptyState title="No students found" subtitle="Try adjusting your filters or add a new student." /> : (
+          <>
           <table className="w-full min-w-[900px]">
             <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
               <tr>
@@ -110,7 +114,7 @@ export default function Students() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {data?.items.map(s => (
+              {paginated.map(s => (
                 <tr key={s.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40">
                   <td className="td">
                     <div className="flex items-center gap-3">
@@ -142,6 +146,8 @@ export default function Students() {
               ))}
             </tbody>
           </table>
+          <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
+          </>
         )}
       </div>
 

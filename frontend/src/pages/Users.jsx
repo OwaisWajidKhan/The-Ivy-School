@@ -4,11 +4,13 @@ import useFetch from '../lib/useFetch';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import Spinner, { PageLoader, EmptyState } from '../components/Spinner';
+import Pagination, { useClientPagination } from '../components/Pagination';
 import { useToast } from '../context/ToastContext';
 
 export default function Users() {
   const toast = useToast();
-  const { data, loading, reload } = useFetch('/admin/users');
+  const { data, loading, reload } = useFetch('/admin/users', [], { params: { limit: 10000 } });
+  const { paginated, page, setPage, pageCount, total } = useClientPagination(data?.items);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ username: '', email: '', password: '', role: 'admin', person_type: 'admin', person_id: '', status: 'active' });
   const [avatarFile, setAvatarFile] = useState(null);
@@ -40,13 +42,14 @@ export default function Users() {
       </div>
 
       <div className="card overflow-x-auto">
-        {loading ? <PageLoader /> : data?.items.length === 0 ? <EmptyState title="No users" /> : (
+        {loading ? <PageLoader /> : total === 0 ? <EmptyState title="No users" /> : (
+          <>
           <table className="w-full min-w-[800px]">
             <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
               <tr><th className="th">Username</th><th className="th">Email</th><th className="th">Role</th><th className="th">Linked to</th><th className="th">Last login</th><th className="th">Status</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {data?.items.map(u => (
+              {paginated.map(u => (
                 <tr key={u.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40">
                   <td className="td font-medium">{u.username}</td>
                   <td className="td text-xs">{u.email || '—'}</td>
@@ -58,6 +61,8 @@ export default function Users() {
               ))}
             </tbody>
           </table>
+          <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
+          </>
         )}
       </div>
 

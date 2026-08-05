@@ -4,14 +4,16 @@ import useFetch from '../lib/useFetch';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import Spinner, { PageLoader, EmptyState } from '../components/Spinner';
+import Pagination, { useClientPagination } from '../components/Pagination';
 import { fmtDate } from '../lib/format';
 import { useToast } from '../context/ToastContext';
 
 export default function Cards() {
   const toast = useToast();
   const { data: dash, loading: dashLoading, reload: reloadDash } = useFetch('/cards/dashboard');
-  const [params, setParams] = useState({});
+  const [params, setParams] = useState({ limit: 10000 });
   const { data, loading, reload } = useFetch('/cards', [params], { params });
+  const { paginated, page, setPage, pageCount, total } = useClientPagination(data?.items);
   const { data: people } = useFetch('/cards/pool', [], {});
   const [assignOpen, setAssignOpen] = useState(false);
   const [form, setForm] = useState({ person_type: 'student', person_id: '', uid: '' });
@@ -117,7 +119,7 @@ export default function Cards() {
             </button>
           ))}
         </div>
-        {loading ? <PageLoader /> : data?.items?.length === 0 ? <EmptyState title="No cards" /> : (
+        {loading ? <PageLoader /> : total === 0 ? <EmptyState title="No cards" /> : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px]">
               <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
@@ -132,7 +134,7 @@ export default function Cards() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {data?.items?.map(c => (
+                {paginated.map(c => (
                   <tr key={c.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40">
                     <td className="td font-mono text-xs">{c.uid}</td>
                     <td className="td"><Badge status={c.card_type} /></td>
@@ -150,10 +152,11 @@ export default function Cards() {
                         <button className="btn-secondary !px-2 !py-1 text-xs" onClick={() => reissue(c.id)}>Reissue</button>
                       </div>
                     </td>
-                  </tr>
-                ))}
+</tr>
+              ))}
               </tbody>
             </table>
+            <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
           </div>
         )}
       </div>

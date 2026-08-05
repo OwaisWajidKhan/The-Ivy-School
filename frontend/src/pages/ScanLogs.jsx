@@ -3,6 +3,7 @@ import api from '../lib/api';
 import useFetch from '../lib/useFetch';
 import Badge from '../components/Badge';
 import { PageLoader, EmptyState } from '../components/Spinner';
+import Pagination, { useClientPagination } from '../components/Pagination';
 import { fmtDate, todayStr } from '../lib/format';
 import { useToast } from '../context/ToastContext';
 
@@ -27,8 +28,9 @@ async function downloadCsv(path) {
 
 export default function ScanLogs() {
   const toast = useToast();
-  const [params, setParams] = useState({ date: todayStr() });
+  const [params, setParams] = useState({ date: todayStr(), limit: 10000 });
   const { data, loading } = useFetch('/attendance/logs', [params], { params });
+  const { paginated, page, setPage, pageCount, total } = useClientPagination(data?.items);
   const doExport = async () => {
     const q = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => { if (v) q.set(k, v); });
@@ -56,13 +58,14 @@ export default function ScanLogs() {
             <option value="">All In/Out</option><option value="IN">IN</option><option value="OUT">OUT</option>
           </select>
         </div>
-        {loading ? <PageLoader /> : data?.items.length === 0 ? <EmptyState title="No scans" subtitle="Try a different date or filter." /> : (
+        {loading ? <PageLoader /> : total === 0 ? <EmptyState title="No scans" subtitle="Try a different date or filter." /> : (
+          <>
           <table className="w-full min-w-[900px]">
             <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
               <tr><th className="th">#</th><th className="th">Card ID</th><th className="th">Person</th><th className="th">Type</th><th className="th">In/Out</th><th className="th">Device</th><th className="th">Location</th><th className="th">Scan time</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {data?.items.map(l => (
+              {paginated.map(l => (
                 <tr key={l.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40">
                   <td className="td font-mono text-xs">{l.id}</td>
                   <td className="td font-mono text-xs">{l.raw_uid || '—'}</td>
@@ -76,6 +79,8 @@ export default function ScanLogs() {
               ))}
             </tbody>
           </table>
+          <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
+          </>
         )}
       </div>
     </div>

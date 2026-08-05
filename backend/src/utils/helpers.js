@@ -57,7 +57,7 @@ async function audit(user, action, entityType = null, entityId = null, details =
 
 function paginate(page = 1, limit = 25) {
   const p = Math.max(1, parseInt(page, 10) || 1);
-  const l = Math.min(200, Math.max(1, parseInt(limit, 10) || 25));
+  const l = Math.min(10000, Math.max(1, parseInt(limit, 10) || 25));
   return { page: p, limit: l, offset: (p - 1) * l };
 }
 

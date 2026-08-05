@@ -3,6 +3,7 @@ import api from '../lib/api';
 import useFetch from '../lib/useFetch';
 import Badge from '../components/Badge';
 import { PageLoader, EmptyState } from '../components/Spinner';
+import Pagination, { useClientPagination } from '../components/Pagination';
 import { fmtDate, fmtHours, todayStr } from '../lib/format';
 
 // Authenticated CSV download (Bearer token). Previously used window.location,
@@ -131,7 +132,7 @@ function SummaryReport({ data }) {
   const { data: d, loading } = data;
   if (loading || !d) return <PageLoader />;
   if (!d.rows?.length) return <EmptyState title="No attendance summary for this month" />;
-  const total = d.total || 0;
+  const { paginated, page, setPage, pageCount, total } = useClientPagination(d.rows);
   return (
     <div className="card overflow-x-auto">
       <table className="w-full min-w-[900px]">
@@ -139,7 +140,7 @@ function SummaryReport({ data }) {
           <tr><th className="th">Student</th><th className="th">Class</th><th className="th">Present</th><th className="th">Absent</th><th className="th">Late</th><th className="th">Attendance %</th><th className="th">Status</th></tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-          {d.rows.map(r => (
+          {paginated.map(r => (
             <tr key={r.student_id}>
               <td className="td font-medium">{r.full_name}</td>
               <td className="td text-xs">{r.class_name} {r.section_name}</td>
@@ -152,6 +153,7 @@ function SummaryReport({ data }) {
           ))}
         </tbody>
       </table>
+      <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
     </div>
   );
 }
@@ -189,6 +191,7 @@ function MonthlyReport({ data }) {
   const { data: d, loading } = data;
   if (loading || !d) return <PageLoader />;
   if (d.rows.length === 0) return <EmptyState title="No attendance for this period" />;
+  const { paginated, page, setPage, pageCount, total } = useClientPagination(d.rows);
   return (
     <div className="card overflow-x-auto">
       <table className="w-full min-w-[1100px]">
@@ -200,7 +203,7 @@ function MonthlyReport({ data }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-          {d.rows.map((r, i) => (
+          {paginated.map((r, i) => (
             <tr key={i} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40">
               <td className="td font-medium">{r.full_name}</td>
               <td className="td capitalize text-xs">{r.person_type}</td>
@@ -217,6 +220,7 @@ function MonthlyReport({ data }) {
           ))}
         </tbody>
       </table>
+      <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
     </div>
   );
 }

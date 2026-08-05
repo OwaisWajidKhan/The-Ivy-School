@@ -4,6 +4,7 @@ import useFetch from '../lib/useFetch';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import Spinner, { PageLoader, EmptyState } from '../components/Spinner';
+import Pagination, { useClientPagination } from '../components/Pagination';
 import { fmtDate, fmtHours, timeAgo, todayStr } from '../lib/format';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -137,8 +138,9 @@ function Section({ title, children }) {
 
 function SummaryView() {
   const toast = useToast();
-  const [params, setParams] = useState({});
+  const [params, setParams] = useState({ limit: 10000 });
   const { data, loading, reload } = useFetch('/attendance/summary', [params], { params });
+  const { paginated, page, setPage, pageCount, total } = useClientPagination(data?.items);
   const doExport = async () => {
     const q = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => { if (v) q.set(k, v); });
@@ -165,13 +167,14 @@ function SummaryView() {
         </div>
       </div>
       <div className="card overflow-x-auto">
-        {loading ? <PageLoader /> : data?.items.length === 0 ? <EmptyState title="No attendance records" subtitle="Try a different date or filter." /> : (
+        {loading ? <PageLoader /> : total === 0 ? <EmptyState title="No attendance records" subtitle="Try a different date or filter." /> : (
+          <>
           <table className="w-full min-w-[900px]">
             <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
               <tr><th className="th">Date</th><th className="th">Person</th><th className="th">Type</th><th className="th">Class/Dept</th><th className="th">In</th><th className="th">Out</th><th className="th">Hours</th><th className="th">Status</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {data?.items.map(r => (
+              {paginated.map(r => (
                 <tr key={r.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40">
                   <td className="td">{fmtDate(r.date)}</td>
                   <td className="td font-medium">{r.full_name}</td>
@@ -185,6 +188,8 @@ function SummaryView() {
               ))}
             </tbody>
           </table>
+          <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
+          </>
         )}
       </div>
     </div>
@@ -270,8 +275,9 @@ function ScanSimulator() {
 
 function LogsView() {
   const toast = useToast();
-  const [params, setParams] = useState({});
+  const [params, setParams] = useState({ limit: 10000 });
   const { data, loading } = useFetch('/attendance/logs', [params], { params });
+  const { paginated, page, setPage, pageCount, total } = useClientPagination(data?.items);
   const doExport = async () => {
     const q = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => { if (v) q.set(k, v); });
@@ -287,13 +293,14 @@ function LogsView() {
         </select>
         <button className="btn-secondary sm:ml-auto" onClick={doExport}>⬇ Export CSV</button>
       </div>
-      {loading ? <PageLoader /> : data?.items.length === 0 ? <EmptyState title="No scans for this date" /> : (
+      {loading ? <PageLoader /> : total === 0 ? <EmptyState title="No scans for this date" /> : (
+        <>
         <table className="w-full min-w-[900px]">
           <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
             <tr><th className="th">#</th><th className="th">Card ID</th><th className="th">Person</th><th className="th">Type</th><th className="th">In/Out</th><th className="th">Device</th><th className="th">Location</th><th className="th">Time</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {data?.items.map(l => (
+            {paginated.map(l => (
               <tr key={l.id}>
                 <td className="td font-mono text-xs">{l.id}</td>
                 <td className="td font-mono text-xs">{l.raw_uid || '—'}</td>
@@ -307,6 +314,8 @@ function LogsView() {
             ))}
           </tbody>
         </table>
+        <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
+        </>
       )}
     </div>
   );
