@@ -132,7 +132,7 @@ function SummaryReport({ data }) {
   const { data: d, loading } = data;
   if (loading || !d) return <PageLoader />;
   if (!d.rows?.length) return <EmptyState title="No attendance summary for this month" />;
-  const { paginated, page, setPage, pageCount, total } = useClientPagination(d.rows);
+  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(d.rows);
   return (
     <div className="card overflow-x-auto">
       <table className="w-full min-w-[900px]">
@@ -153,7 +153,7 @@ function SummaryReport({ data }) {
           ))}
         </tbody>
       </table>
-      <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
+      <Pagination page={page} pageCount={pageCount} pageSize={pageSize} onPageSizeChange={setPageSize} total={total} onChange={setPage} />
     </div>
   );
 }
@@ -191,7 +191,7 @@ function MonthlyReport({ data }) {
   const { data: d, loading } = data;
   if (loading || !d) return <PageLoader />;
   if (d.rows.length === 0) return <EmptyState title="No attendance for this period" />;
-  const { paginated, page, setPage, pageCount, total } = useClientPagination(d.rows);
+  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(d.rows);
   return (
     <div className="card overflow-x-auto">
       <table className="w-full min-w-[1100px]">
@@ -220,7 +220,7 @@ function MonthlyReport({ data }) {
           ))}
         </tbody>
       </table>
-      <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
+      <Pagination page={page} pageCount={pageCount} pageSize={pageSize} onPageSizeChange={setPageSize} total={total} onChange={setPage} />
     </div>
   );
 }

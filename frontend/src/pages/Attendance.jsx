@@ -140,7 +140,7 @@ function SummaryView() {
   const toast = useToast();
   const [params, setParams] = useState({ limit: 10000 });
   const { data, loading, reload } = useFetch('/attendance/summary', [params], { params });
-  const { paginated, page, setPage, pageCount, total } = useClientPagination(data?.items);
+  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(data?.items);
   const doExport = async () => {
     const q = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => { if (v) q.set(k, v); });
@@ -188,7 +188,7 @@ function SummaryView() {
               ))}
             </tbody>
           </table>
-          <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
+          <Pagination page={page} pageCount={pageCount} pageSize={pageSize} onPageSizeChange={setPageSize} total={total} onChange={setPage} />
           </>
         )}
       </div>
@@ -277,7 +277,7 @@ function LogsView() {
   const toast = useToast();
   const [params, setParams] = useState({ limit: 10000 });
   const { data, loading } = useFetch('/attendance/logs', [params], { params });
-  const { paginated, page, setPage, pageCount, total } = useClientPagination(data?.items);
+  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(data?.items);
   const doExport = async () => {
     const q = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => { if (v) q.set(k, v); });
@@ -314,7 +314,7 @@ function LogsView() {
             ))}
           </tbody>
         </table>
-        <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
+        <Pagination page={page} pageCount={pageCount} pageSize={pageSize} onPageSizeChange={setPageSize} total={total} onChange={setPage} />
         </>
       )}
     </div>

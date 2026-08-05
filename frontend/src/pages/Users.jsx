@@ -10,7 +10,7 @@ import { useToast } from '../context/ToastContext';
 export default function Users() {
   const toast = useToast();
   const { data, loading, reload } = useFetch('/admin/users', [], { params: { limit: 10000 } });
-  const { paginated, page, setPage, pageCount, total } = useClientPagination(data?.items);
+  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(data?.items);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ username: '', email: '', password: '', role: 'admin', person_type: 'admin', person_id: '', status: 'active' });
   const [avatarFile, setAvatarFile] = useState(null);
@@ -61,7 +61,7 @@ export default function Users() {
               ))}
             </tbody>
           </table>
-          <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
+          <Pagination page={page} pageCount={pageCount} pageSize={pageSize} onPageSizeChange={setPageSize} total={total} onChange={setPage} />
           </>
         )}
       </div>

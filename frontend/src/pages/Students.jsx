@@ -30,7 +30,7 @@ export default function Students() {
     setParams({ q: query || undefined, class_id: classId || undefined, limit: 10000 });
   }, [query, classId]);
 
-  const { paginated, page, setPage, pageCount, total } = useClientPagination(data?.items);
+  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(data?.items);
 
   const loadSections = async (classId, autoSelect = false) => {
     if (!classId) { setForm(f => ({ ...f, section_id: '' })); return; }
@@ -146,7 +146,7 @@ export default function Students() {
               ))}
             </tbody>
           </table>
-          <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
+          <Pagination page={page} pageCount={pageCount} pageSize={pageSize} onPageSizeChange={setPageSize} total={total} onChange={setPage} />
           </>
         )}
       </div>
