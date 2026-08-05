@@ -26,9 +26,9 @@ router.get('/', requireAnyPermission('manage_employees', 'view_employees'), asyn
   const where = [];
   const params = [];
   if (req.query.q) {
-    where.push('(e.full_name LIKE ? OR e.employee_id LIKE ? OR e.cnic LIKE ? OR e.rfid_uid LIKE ?)');
+    where.push('(e.full_name LIKE ? OR e.employee_id LIKE ? OR e.cnic LIKE ? OR e.rfid_uid LIKE ? OR e.mobile LIKE ?)');
     const q = `%${req.query.q}%`;
-    params.push(q, q, q, q);
+    params.push(q, q, q, q, q);
   }
   if (req.query.department_id) { where.push('e.department_id = ?'); params.push(req.query.department_id); }
   if (req.query.designation) { where.push('e.designation LIKE ?'); params.push(`%${req.query.designation}%`); }
