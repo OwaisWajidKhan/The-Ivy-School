@@ -77,8 +77,7 @@ const perm = {
     'manage_holidays', 'export_reports', 'view_reports', 'view_audit_logs', 'manage_shifts'
   ],
   finance: [
-    'view_students', 'view_employees', 'view_attendance',
-    'manage_payroll', 'generate_payroll', 'view_reports', 'export_reports'
+    'view_students', 'view_employees', 'view_attendance', 'view_reports', 'export_reports'
   ]
 };
 

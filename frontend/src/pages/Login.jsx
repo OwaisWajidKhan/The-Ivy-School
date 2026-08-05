@@ -5,11 +5,6 @@ import { useTheme } from '../context/ThemeContext';
 import Spinner from '../components/Spinner';
 import { useToast } from '../context/ToastContext';
 
-const DEMO = [
-  { u: 'admin', p: 'Admin@123', label: 'Admin' },
-  { u: 'finance', p: 'Finance@123', label: 'Finance' }
-];
-
 export default function Login() {
   const { login } = useAuth();
   const { dark, toggle } = useTheme();
@@ -67,23 +62,6 @@ export default function Login() {
             {loading ? <Spinner size={18} /> : 'Sign in'}
           </button>
         </form>
-
-        <div className="card animate-slide-up mt-4 p-4" style={{ animationDelay: '0.1s' }}>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Demo accounts</p>
-          <div className="grid grid-cols-2 gap-1.5">
-            {DEMO.map((d, i) => (
-              <button
-                key={d.u}
-                className="hover-lift rounded-lg border border-slate-200 px-2 py-1.5 text-left text-xs transition-colors hover:border-brand-400 hover:bg-brand-50 dark:border-slate-700 dark:hover:border-brand-500/50 dark:hover:bg-brand-500/10"
-                style={{ animationDelay: `${0.15 + i * 0.05}s` }}
-                onClick={() => { setUsername(d.u); setPassword(d.p); }}
-              >
-                <span className="block font-semibold">{d.label}</span>
-                <span className="text-slate-400">{d.u}</span>
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );
