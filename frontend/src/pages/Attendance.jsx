@@ -157,7 +157,7 @@ function SummaryView() {
           </select>
           <select className="input" value={params.status || ''} onChange={e => setParams(p => ({ ...p, status: e.target.value || undefined }))}>
             <option value="">All statuses</option>
-            {['present', 'late', 'absent', 'half_day', 'early_exit', 'overtime'].map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+            {['present', 'absent'].map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
           </select>
           <input className="input" type="date" onChange={e => setParams(p => ({ ...p, from: e.target.value, date: undefined }))} title="From date" />
           <input className="input" type="date" onChange={e => setParams(p => ({ ...p, to: e.target.value, date: undefined }))} title="To date" />
@@ -226,7 +226,7 @@ function ScanSimulator() {
   };
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div className="space-y-6">
       <div className="card p-6">
         <h3 className="mb-4 text-base font-semibold">RFID Scanner</h3>
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">Tap your card on the reader — the scan is recorded automatically. Keep this tab open.</p>
@@ -241,31 +241,45 @@ function ScanSimulator() {
         <h3 className="mb-4 text-base font-semibold">Scan Result</h3>
         {!result && !error && <p className="text-sm text-slate-400">Scan a card to see the result here.</p>}
         {result && (
-          <div className="space-y-4">
-            <div className={`flex items-center gap-4 rounded-xl border p-4 ${result.direction === 'IN' ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10' : 'border-orange-200 bg-orange-50 dark:border-orange-500/30 dark:bg-orange-500/10'}`}>
-              <div className={`flex h-12 w-12 items-center justify-center rounded-full text-xl font-bold ${result.direction === 'IN' ? 'bg-emerald-500 text-white' : 'bg-orange-500 text-white'}`}>
-                {result.direction === 'IN' ? 'IN' : 'OUT'}
+          <div className={`flex flex-col overflow-hidden rounded-xl border sm:flex-row ${result.direction === 'IN' ? 'border-emerald-200 dark:border-emerald-500/30' : 'border-orange-200 dark:border-orange-500/30'}`}>
+            <div className={`flex w-full items-center justify-center p-10 sm:w-1/2 ${result.direction === 'IN' ? 'bg-emerald-50 dark:bg-emerald-500/10' : 'bg-orange-50 dark:bg-orange-500/10'}`}>
+              {result.person?.photo ? (
+                <img src={result.person.photo} alt="" className="h-40 w-40 rounded-full object-cover shadow-lg ring-4 ring-white dark:ring-slate-800" />
+              ) : (
+                <div className="flex h-40 w-40 items-center justify-center rounded-full bg-brand-100 text-6xl font-bold text-brand-700 ring-4 ring-white dark:bg-brand-500/15 dark:text-brand-300 dark:ring-slate-800">
+                  {(result.person?.name || '?').charAt(0)}
+                </div>
+              )}
+            </div>
+            <div className="w-full flex-1 space-y-4 p-6 sm:w-1/2 sm:p-8">
+              <div className="flex items-center gap-3">
+                <span className={`rounded-full px-3 py-1 text-sm font-bold text-white ${result.direction === 'IN' ? 'bg-emerald-500' : 'bg-orange-500'}`}>{result.direction === 'IN' ? 'IN' : 'OUT'}</span>
+                <span className="text-xs capitalize text-slate-400">{result.person?.type}</span>
               </div>
               <div>
-                <p className="font-semibold">{result.person?.name}</p>
-                <p className="text-sm text-slate-500">{result.message}</p>
+                <p className="text-3xl font-bold">{result.person?.name}</p>
+                <p className="mt-1 text-sm text-slate-500">{result.message}</p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {[
+                  ['Student ID', result.person?.code]
+                ].map(([k, v]) => (
+                  <div key={k} className="rounded-lg bg-slate-50 px-3 py-3 dark:bg-slate-800">
+                    <dt className="text-xs text-slate-400">{k}</dt>
+                    <dd className="mt-0.5 text-lg font-semibold">{v || '—'}</dd>
+                  </div>
+                ))}
+                {[
+                  ['Check In time', result.summary?.in_time],
+                  ['Check Out time', result.summary?.out_time || '—']
+                ].map(([k, v]) => (
+                  <div key={k} className="rounded-lg bg-slate-50 px-3 py-3 dark:bg-slate-800">
+                    <dt className="text-xs text-slate-400">{k}</dt>
+                    <dd className="mt-0.5 text-lg font-semibold">{v || '—'}</dd>
+                  </div>
+                ))}
               </div>
             </div>
-            <dl className="grid grid-cols-2 gap-3 text-sm">
-              {[
-                ['Type', result.person?.type],
-                ['Status', result.summary?.status],
-                ['In time', result.summary?.in_time],
-                ['Out time', result.summary?.out_time || '—'],
-                ['Working hours', fmtHours(result.summary?.working_hours)],
-                ['Late minutes', result.summary?.late_minutes || 0]
-              ].map(([k, v]) => (
-                <div key={k} className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800">
-                  <dt className="text-xs text-slate-400">{k}</dt>
-                  <dd className="font-semibold capitalize">{String(v)}</dd>
-                </div>
-              ))}
-            </dl>
           </div>
         )}
       </div>
@@ -306,7 +320,7 @@ function LogsView() {
                 <td className="td font-mono text-xs">{l.raw_uid || '—'}</td>
                 <td className="td font-medium">{l.full_name || <span className="text-xs text-rose-400">unknown</span>}</td>
                 <td className="td capitalize text-xs">{l.person_type || '—'}</td>
-                <td className="td"><Badge status={l.direction === 'IN' ? 'present' : 'half_day'} /></td>
+                <td className="td"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${l.direction === 'IN' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-300'}`}>{l.direction || '—'}</span></td>
                 <td className="td font-mono text-xs">{l.device_id || '—'}</td>
                 <td className="td text-xs">{l.location || '—'}</td>
                 <td className="td text-xs">{fmtDate(l.scan_time, true)}</td>
@@ -358,7 +372,7 @@ function ManualMark({ open, onClose, onSaved }) {
         <div>
           <label className="label">Status</label>
           <select className="input" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
-            {['present', 'late', 'absent', 'half_day', 'early_exit', 'overtime'].map(s => <option key={s}>{s}</option>)}
+            {['present', 'absent'].map(s => <option key={s}>{s}</option>)}
           </select>
         </div>
         <div><label className="label">In time</label><input className="input" type="time" value={form.in_time} onChange={e => setForm({ ...form, in_time: e.target.value })} /></div>

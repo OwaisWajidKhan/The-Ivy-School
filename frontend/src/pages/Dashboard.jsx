@@ -33,14 +33,12 @@ export default function Dashboard() {
         <StatCard
           label="Students Present"
           value={`${students.presentToday} / ${students.total}`}
-          sub={`${students.late} late today`}
           icon={I('M22 10 12 5 2 10l10 5 10-5Z M6 12v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5 M22 10v6')}
           accent={cardStyle}
         />
         <StatCard
           label="Staff Present"
           value={`${employees.presentToday} / ${employees.total}`}
-          sub={`${employees.late} late · ${employees.overtime} overtime`}
           icon={I('M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75')}
           accent={cardStyle}
         />
@@ -127,8 +125,6 @@ export default function Dashboard() {
           <div className="space-y-3">
             {[
               ['Present', students.present, 'bg-emerald-500'],
-              ['Late', students.late, 'bg-amber-500'],
-              ['Half Day', students.half_day, 'bg-orange-500'],
               ['Absent', students.absent || Math.max(0, students.total - students.presentToday), 'bg-rose-500']
             ].map(([label, val, color]) => (
               <div key={label}>
@@ -149,9 +145,7 @@ export default function Dashboard() {
           <div className="space-y-3">
             {[
               ['Present', employees.present, 'bg-emerald-500'],
-              ['Late', employees.late, 'bg-amber-500'],
-              ['Overtime', employees.overtime, 'bg-violet-500'],
-              ['Early Exit', employees.early_exit, 'bg-sky-500']
+              ['Absent', employees.absent || Math.max(0, employees.total - employees.presentToday), 'bg-rose-500']
             ].map(([label, val, color]) => (
               <div key={label}>
                 <div className="mb-1 flex justify-between text-sm">
