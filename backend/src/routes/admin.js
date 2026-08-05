@@ -3,7 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const { db, getSetting, setSetting } = require('../db/schema');
-const { requireAuth, requireRole, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const { ok, fail, audit, paginate } = require('../utils/helpers');
 const { toLocalSql } = require('../utils/timezone');
 const storage = require('../services/storageService');
@@ -84,20 +84,6 @@ router.put('/settings', requireRole('admin'), async (req, res) => {
   await setSetting(key, value);
   audit(req.user, 'update_setting', 'setting', null, { key, value }, req.ip);
   ok(res, { key, value });
-});
-
-// --- Audit logs ---
-router.get('/audit', requirePermission('view_audit_logs'), async (req, res) => {
-  const { page, limit, offset } = paginate(req.query.page, req.query.limit);
-  const where = [];
-  const params = [];
-  if (req.query.q) { where.push('(username LIKE ? OR action LIKE ? OR entity_type LIKE ? OR details LIKE ?)'); const t = `%${req.query.q}%`; params.push(t, t, t, t); }
-  if (req.query.action) { where.push('action = ?'); params.push(req.query.action); }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const total = (await db.prepare(`SELECT COUNT(*) AS c FROM audit_logs ${whereSql}`).get(...params)).c;
-  const rows = await db.prepare(`SELECT * FROM audit_logs ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
-  for (const r of rows) r.created_at = toLocalSql(r.created_at);
-  ok(res, { items: rows, total, page, limit });
 });
 
 // --- Branding (single-school) ---

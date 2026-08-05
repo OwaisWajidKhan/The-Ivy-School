@@ -122,34 +122,6 @@ router.delete('/shifts/:id', requirePermission('manage_settings'), async (req, r
   ok(res, { message: 'Deleted' });
 });
 
-// --- Holidays ---
-router.get('/holidays', async (req, res) => {
-  const { year } = req.query;
-  const rows = year
-    ? await db.prepare("SELECT * FROM holidays WHERE date LIKE ? ORDER BY date").all(`${year}%`)
-    : await db.prepare('SELECT * FROM holidays ORDER BY date DESC').all();
-  ok(res, rows);
-});
-
-router.post('/holidays', requirePermission('manage_holidays'), async (req, res) => {
-  const { name, date, type, description } = req.body;
-  if (!name || !date) return fail(res, 'name and date required');
-  try {
-    const info = await db.prepare('INSERT INTO holidays (name, date, type, description) VALUES (?,?,?,?)')
-      .run(name, date, type || 'Public', description || null);
-    audit(req.user, 'create_holiday', 'holiday', info.lastInsertRowid, { name, date }, req.ip);
-    ok(res, await db.prepare('SELECT * FROM holidays WHERE id = ?').get(info.lastInsertRowid), 201);
-  } catch (e) {
-    if (String(e.message).toLowerCase().includes('unique')) return fail(res, 'Holiday already exists for this date');
-    throw e;
-  }
-});
-
-router.delete('/holidays/:id', requirePermission('manage_holidays'), async (req, res) => {
-  await db.prepare('DELETE FROM holidays WHERE id = ?').run(req.params.id);
-  ok(res, { message: 'Deleted' });
-});
-
 // --- Roles (for admin management) ---
 router.get('/roles', requireRole('admin'), async (req, res) => {
   ok(res, await db.prepare('SELECT id, name, description, permissions FROM roles').all());

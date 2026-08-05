@@ -1,5 +1,5 @@
 const { db, getSetting } = require('../db/schema');
-const { todayStr, nowStr, parseDateTime, minutesBetween, hhmmToMinutes } = require('../utils/helpers');
+const { todayStr, nowStr, minutesBetween, hhmmToMinutes } = require('../utils/helpers');
 
 async function getStartEnd(personType, personId) {
   // employees use their shift; students use school timings
@@ -67,20 +67,6 @@ async function lookupPerson(uid) {
   };
 }
 
-async function isDuplicate(personType, personId, scanTime) {
-  const windowSec = parseInt(await getSetting('duplicate_scan_window_sec', '30'), 10);
-  const row = await db.prepare(
-    `SELECT scan_time FROM attendance_logs
-     WHERE person_type = ? AND person_id = ?
-     ORDER BY id DESC LIMIT 1`
-  ).get(personType, personId);
-  if (!row) return false;
-  const last = parseDateTime(row.scan_time);
-  const current = parseDateTime(scanTime);
-  if (!last || !current) return false;
-  return (current - last) / 1000 < windowSec;
-}
-
 async function closeSummary(summary, outTime, timing) {
   const inMinutes = hhmmToMinutes(summary.in_time);
   const outMinutes = hhmmToMinutes(outTime);
@@ -120,20 +106,6 @@ async function closeSummary(summary, outTime, timing) {
  * Core RFID processing. Returns the attendance action result.
  */
 async function processScan({ uid, deviceId = null, deviceName = null, location = null, scanTime = nowStr() }) {
-  const person = await lookupPerson(uid);
-  if (!person.found) {
-    await db.prepare(
-      'INSERT INTO attendance_logs (person_type, person_id, direction, scan_time, date, raw_uid, device_id, location) VALUES (?,?,?,?,?,?,?,?)'
-    ).run('employee', 0, 'IN', scanTime, scanTime.slice(0, 10), uid, deviceId, location);
-    return { ok: false, code: person.reason, message: `Card not recognized or not active (${person.reason})` };
-  }
-
-  const date = scanTime.slice(0, 10);
-  if (await isDuplicate(person.personType, person.personId, scanTime)) {
-    return { ok: false, code: 'DUPLICATE', message: 'Duplicate scan ignored', person: { name: person.name, type: person.personType } };
-  }
-
-  // Ensure device exists (create on the fly if deviceId provided)
   if (deviceId) {
     const dev = await db.prepare('SELECT id FROM devices WHERE device_id = ?').get(deviceId);
     if (!dev) {
@@ -147,16 +119,20 @@ async function processScan({ uid, deviceId = null, deviceName = null, location =
     await db.prepare("UPDATE devices SET last_sync_time = ?, status = 'online' WHERE id = ?").run(nowStr(), deviceId);
   }
 
+  const person = await lookupPerson(uid);
+  if (!person.found) {
+    await db.prepare(
+      'INSERT INTO attendance_logs (person_type, person_id, direction, scan_time, date, raw_uid, device_id, location) VALUES (?,?,?,?,?,?,?,?)'
+    ).run('employee', 0, 'IN', scanTime, scanTime.slice(0, 10), uid, deviceId, location);
+    return { ok: false, code: person.reason, message: `Card not recognized or not active (${person.reason})` };
+  }
+
+  const date = scanTime.slice(0, 10);
   let summary = await db.prepare(
     `SELECT * FROM attendance_summary WHERE person_type = ? AND person_id = ? AND date = ?`
   ).get(person.personType, person.personId, date);
 
   const timing = await getStartEnd(person.personType, person.personId);
-  const direction = summary && summary.out_time ? 'IN' : summary ? 'OUT' : 'IN';
-
-  await db.prepare(
-    'INSERT INTO attendance_logs (person_type, person_id, device_id, location, direction, scan_time, date, raw_uid) VALUES (?,?,?,?,?,?,?,?)'
-  ).run(person.personType, person.personId, deviceId, location, direction, scanTime, date, uid);
 
   if (!summary) {
     const inTime = scanTime.slice(11, 16);
@@ -167,52 +143,20 @@ async function processScan({ uid, deviceId = null, deviceName = null, location =
        VALUES (?,?,?,?,?,?)`
     ).run(person.personType, person.personId, date, inTime, status, lateMinutes);
     summary = await db.prepare('SELECT * FROM attendance_summary WHERE id = ?').get(info.lastInsertRowid);
+    await db.prepare(
+      'INSERT INTO attendance_logs (person_type, person_id, device_id, location, direction, scan_time, date, raw_uid) VALUES (?,?,?,?,?,?,?,?)'
+    ).run(person.personType, person.personId, deviceId, location, 'IN', scanTime, date, uid);
     await notifyAttendance(person, 'IN', inTime);
     return { ok: true, direction: 'IN', summary, person: { name: person.name, type: person.personType, id: person.personId }, message: `IN recorded for ${person.name}` };
   }
 
-  if (summary.out_time) {
-    // Already checked out - this is a new entry (person re-entered)
-    const inTime = scanTime.slice(11, 16);
-    const lateMinutes = Math.max(0, hhmmToMinutes(inTime) - (hhmmToMinutes(timing.start) + timing.grace));
-    const status = lateMinutes > 0 ? 'late' : 'present';
-    const info = await db.prepare(
-      `INSERT INTO attendance_summary (person_type, person_id, date, in_time, status, late_minutes)
-       VALUES (?,?,?,?,?,?)`
-    ).run(person.personType, person.personId, date, inTime, status, lateMinutes);
-    const newSummary = await db.prepare('SELECT * FROM attendance_summary WHERE id = ?').get(info.lastInsertRowid);
-    await notifyAttendance(person, 'IN', inTime);
-    return { ok: true, direction: 'IN', summary: newSummary, person: { name: person.name, type: person.personType, id: person.personId }, message: `IN recorded for ${person.name}` };
-  }
-
   const outTime = scanTime.slice(11, 16);
   const updated = await closeSummary(summary, outTime, timing);
+  await db.prepare(
+    'INSERT INTO attendance_logs (person_type, person_id, device_id, location, direction, scan_time, date, raw_uid) VALUES (?,?,?,?,?,?,?,?)'
+  ).run(person.personType, person.personId, deviceId, location, 'OUT', scanTime, date, uid);
   await notifyAttendance(person, 'OUT', outTime);
-  const gatePass = await autoCompleteGatePass(person, date);
-  return { ok: true, direction: 'OUT', summary: updated, person: { name: person.name, type: person.personType, id: person.personId }, gatePass: gatePass ? { passNo: gatePass.pass_no, status: 'used' } : null, message: `OUT recorded for ${person.name}` };
-}
-
-// If a student has an approved gate pass today and is scanning OUT, auto-mark it used.
-async function autoCompleteGatePass(person, date) {
-  if (person.personType !== 'student') return null;
-  try {
-    const pass = await db.prepare(
-      `SELECT * FROM gate_passes WHERE student_id = ? AND status = 'approved' AND exit_date = ? ORDER BY id DESC LIMIT 1`
-    ).get(person.personId, date);
-    if (pass) {
-      await db.prepare("UPDATE gate_passes SET status='used', used_at = datetime('now') WHERE id = ?").run(pass.id);
-      const lastLog = await db.prepare(
-        'SELECT id FROM attendance_logs WHERE person_type=? AND person_id=? AND date=? ORDER BY id DESC LIMIT 1'
-      ).get('student', person.personId, date);
-      if (lastLog) {
-        await db.prepare('UPDATE attendance_logs SET gate_pass_id = ? WHERE id = ?').run(pass.id, lastLog.id);
-      }
-      return pass;
-    }
-  } catch (e) {
-    // table may not exist on very old DBs
-  }
-  return null;
+  return { ok: true, direction: 'OUT', summary: updated, person: { name: person.name, type: person.personType, id: person.personId }, message: `Checkout updated to ${outTime} for ${person.name}` };
 }
 
 async function notifyAttendance(person, direction, time) {

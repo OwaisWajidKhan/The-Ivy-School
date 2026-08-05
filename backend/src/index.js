@@ -79,17 +79,12 @@ const routes = {
   '/api/students': require('./routes/students'),
   '/api/employees': require('./routes/employees'),
   '/api/attendance': require('./routes/attendance'),
-  '/api/leaves': require('./routes/leaves'),
-  '/api/payroll': require('./routes/payroll'),
   '/api/reports': require('./routes/reports'),
-  '/api/devices': require('./routes/devices'),
   '/api/dashboard': require('./routes/dashboard'),
   '/api/notifications': require('./routes/notifications'),
   '/api/admin': require('./routes/admin'),
   '/api/reference': require('./routes/reference'),
-  '/api/gate-passes': require('./routes/gatePasses'),
-  '/api/cards': require('./routes/cards'),
-  '/api/hr': require('./routes/hr')
+  '/api/cards': require('./routes/cards')
 };
 
 // Fail loudly when a serverless deployment has no serverless DB: Vercel's
