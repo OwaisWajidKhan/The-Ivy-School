@@ -42,7 +42,7 @@ export default function Reports() {
   const monthly = useFetch('/reports/monthly', [month, year, personType], { params: { month, year, person_type: personType || undefined } });
   const summary = useFetch('/reports/attendance-summary', [month, year], { params: { month, year } });
 
-  const exportUrl = (path) => `/api/reports${path}?month=${month}&year=${year}${personType ? `&person_type=${personType}` : ''}`;
+  const exportUrl = (path) => `/reports${path}?month=${month}&year=${year}${personType ? `&person_type=${personType}` : ''}`;
 
   return (
     <div className="animate-slide-up space-y-4">
@@ -65,7 +65,7 @@ export default function Reports() {
               <label className="label">Date</label>
               <input className="input w-auto" type="date" value={date} onChange={e => setDate(e.target.value)} />
             </div>
-            <button className="btn-secondary" onClick={() => download(`/api/reports/export/daily-csv?date=${date}`)}>⬇ Download CSV</button>
+            <button className="btn-secondary" onClick={() => download(`/reports/export/daily-csv?date=${date}`)}>⬇ Download CSV</button>
           </div>
           <DailyReport data={daily} />
         </div>
@@ -137,7 +137,7 @@ function SummaryReport({ data }) {
     <div className="card overflow-x-auto">
       <table className="w-full min-w-[900px]">
         <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
-          <tr><th className="th">Student</th><th className="th">Class</th><th className="th">Present</th><th className="th">Absent</th><th className="th">Late</th><th className="th">Attendance %</th><th className="th">Status</th></tr>
+          <tr><th className="th">Student</th><th className="th">Class</th><th className="th">Present</th><th className="th">Absent</th><th className="th">Attendance %</th><th className="th">Status</th></tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
           {paginated.map(r => (
@@ -146,7 +146,6 @@ function SummaryReport({ data }) {
               <td className="td text-xs">{r.class_name} {r.section_name}</td>
               <td className="td">{r.present}</td>
               <td className="td text-rose-600 dark:text-rose-400">{r.absent}</td>
-              <td className="td text-amber-600 dark:text-amber-400">{r.late}</td>
               <td className="td">{r.pct != null ? `${r.pct.toFixed(1)}%` : '—'}</td>
               <td className="td"><Badge status={r.pct >= 75 ? 'active' : 'inactive'} /></td>
             </tr>
@@ -194,12 +193,11 @@ function MonthlyReport({ data }) {
   const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(d.rows);
   return (
     <div className="card overflow-x-auto">
-      <table className="w-full min-w-[1100px]">
+      <table className="w-full min-w-[640px]">
         <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
           <tr>
             <th className="th">Person</th><th className="th">Type</th><th className="th">Class/Dept</th>
-            <th className="th">Present</th><th className="th">Late</th><th className="th">Half</th><th className="th">Absent</th>
-            <th className="th">Early</th><th className="th">OT</th><th className="th">Total hrs</th><th className="th">OT hrs</th>
+            <th className="th">Present</th><th className="th">Absent</th><th className="th">Total hrs</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -209,13 +207,8 @@ function MonthlyReport({ data }) {
               <td className="td capitalize text-xs">{r.person_type}</td>
               <td className="td text-xs">{r.class_name ? `${r.class_name} ${r.section_name}` : r.designation || '—'}</td>
               <td className="td">{r.present || 0}</td>
-              <td className="td text-amber-600 dark:text-amber-400">{r.late || 0}</td>
-              <td className="td">{r.half_day || 0}</td>
               <td className="td text-rose-600 dark:text-rose-400">{r.absent || 0}</td>
-              <td className="td">{r.early_exit || 0}</td>
-              <td className="td">{r.overtime || 0}</td>
               <td className="td">{r.total_working_hours}</td>
-              <td className="td">{r.overtime_hours || 0}</td>
             </tr>
           ))}
         </tbody>

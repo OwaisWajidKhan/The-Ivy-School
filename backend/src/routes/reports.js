@@ -4,6 +4,7 @@ const { db } = require('../db/schema');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { ok, fail } = require('../utils/helpers');
 const { todayStr } = require('../utils/helpers');
+const { toExcel } = require('../utils/helpers');
 
 router.use(requireAuth);
 
@@ -158,10 +159,14 @@ router.get('/export/csv', requirePermission('export_reports'), async (req, res) 
   const from = `${y}-${m}-01`;
   const to = `${y}-${m}-31`;
   const rows = await buildRows({ personType: person_type || null, from, to });
-  const csv = toCsv(rows);
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="attendance-${y}-${m}.csv"`);
-  res.send(csv);
+  const xls = toExcel(rows, [
+    ['date', 'Date'], ['person_type', 'Type'], ['full_name', 'Name'],
+    ['class_name', 'Class'], ['section_name', 'Section'], ['department', 'Department'],
+    ['in_time', 'Check In'], ['out_time', 'Check Out'], ['working_hours', 'Hours'], ['status', 'Status']
+  ]);
+  res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="attendance-${y}-${m}.xls"`);
+  res.send(xls);
 });
 
 // Export a daily report as CSV
@@ -177,10 +182,13 @@ router.get('/export/daily-csv', requirePermission('export_reports'), async (req,
      FROM attendance_summary a JOIN employees em ON em.id = a.person_id
      WHERE a.date = ? AND a.person_type='employee' ORDER BY em.full_name`
   ).all(d);
-  const csv = toCsv([...students, ...employees]);
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="daily-attendance-${d}.csv"`);
-  res.send(csv);
+  const xls = toExcel([...students, ...employees], [
+    ['type', 'Type'], ['id', 'ID'], ['full_name', 'Name'], ['class', 'Class/Dept'],
+    ['in_time', 'Check In'], ['out_time', 'Check Out'], ['status', 'Status'], ['working_hours', 'Hours']
+  ]);
+  res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="daily-attendance-${d}.xls"`);
+  res.send(xls);
 });
 
 // ---- Phase 2 reports ----

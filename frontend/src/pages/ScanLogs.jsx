@@ -71,7 +71,7 @@ export default function ScanLogs() {
                   <td className="td font-mono text-xs">{l.raw_uid || '—'}</td>
                   <td className="td font-medium">{l.full_name || <span className="text-xs text-rose-400">unknown</span>}</td>
                   <td className="td capitalize text-xs">{l.person_type || '—'}</td>
-                  <td className="td"><Badge status={l.direction === 'IN' ? 'present' : 'half_day'} /></td>
+                  <td className="td"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${l.direction === 'IN' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-300'}`}>{l.direction || '—'}</span></td>
                   <td className="td font-mono text-xs">{l.device_id || '—'}</td>
                   <td className="td text-xs">{l.location || '—'}</td>
                   <td className="td text-xs">{fmtDate(l.scan_time, true)}</td>

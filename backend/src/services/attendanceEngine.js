@@ -37,7 +37,7 @@ async function lookupPerson(uid) {
 
   if (card.card_type === 'student') {
     const student = await db.prepare(
-      `SELECT s.id, s.full_name, s.status, s.class_id, s.section_id
+      `SELECT s.id, s.full_name, s.status, s.class_id, s.section_id, s.photo, s.student_id
        FROM students s WHERE s.id = ?`
     ).get(card.person_id);
     if (!student) return { found: false, reason: 'PERSON_NOT_FOUND' };
@@ -47,13 +47,15 @@ async function lookupPerson(uid) {
       personType: 'student',
       personId: student.id,
       name: student.full_name,
+      code: student.student_id,
+      photo: student.photo,
       card: card,
       person: student
     };
   }
 
   const emp = await db.prepare(
-    `SELECT e.id, e.full_name, e.status FROM employees e WHERE e.id = ?`
+    `SELECT e.id, e.full_name, e.status, e.photo, e.employee_id FROM employees e WHERE e.id = ?`
   ).get(card.person_id);
   if (!emp) return { found: false, reason: 'PERSON_NOT_FOUND' };
   if (emp.status !== 'active') return { found: false, reason: 'PERSON_INACTIVE' };
@@ -62,6 +64,8 @@ async function lookupPerson(uid) {
     personType: 'employee',
     personId: emp.id,
     name: emp.full_name,
+    code: emp.employee_id,
+    photo: emp.photo,
     card: card,
     person: emp
   };
@@ -147,7 +151,7 @@ async function processScan({ uid, deviceId = null, deviceName = null, location =
       'INSERT INTO attendance_logs (person_type, person_id, device_id, location, direction, scan_time, date, raw_uid) VALUES (?,?,?,?,?,?,?,?)'
     ).run(person.personType, person.personId, deviceId, location, 'IN', scanTime, date, uid);
     await notifyAttendance(person, 'IN', inTime);
-    return { ok: true, direction: 'IN', summary, person: { name: person.name, type: person.personType, id: person.personId }, message: `IN recorded for ${person.name}` };
+    return { ok: true, direction: 'IN', summary, person: { name: person.name, type: person.personType, id: person.personId, code: person.code, photo: person.photo }, message: `IN recorded for ${person.name}` };
   }
 
   const outTime = scanTime.slice(11, 16);
@@ -156,7 +160,7 @@ async function processScan({ uid, deviceId = null, deviceName = null, location =
     'INSERT INTO attendance_logs (person_type, person_id, device_id, location, direction, scan_time, date, raw_uid) VALUES (?,?,?,?,?,?,?,?)'
   ).run(person.personType, person.personId, deviceId, location, 'OUT', scanTime, date, uid);
   await notifyAttendance(person, 'OUT', outTime);
-  return { ok: true, direction: 'OUT', summary: updated, person: { name: person.name, type: person.personType, id: person.personId }, message: `Checkout updated to ${outTime} for ${person.name}` };
+  return { ok: true, direction: 'OUT', summary: updated, person: { name: person.name, type: person.personType, id: person.personId, code: person.code, photo: person.photo }, message: `Checkout updated to ${outTime} for ${person.name}` };
 }
 
 async function notifyAttendance(person, direction, time) {
