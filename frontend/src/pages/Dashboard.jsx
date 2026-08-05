@@ -18,7 +18,7 @@ export default function Dashboard() {
 
   if (loading || !data) return <PageLoader label="Loading dashboard…" />;
 
-  const { students, employees, system, tasks, timeline, weekly, pendingGatePasses, notificationFeed } = data;
+  const { students, employees, system, timeline, weekly, notificationFeed } = data;
 
   const cardStyle = 'text-brand-600 dark:text-brand-400';
 
@@ -29,7 +29,7 @@ export default function Dashboard() {
         <p className="text-sm text-slate-500 dark:text-slate-400">Here's what's happening at The Ivy School today ({fmtDate(data.date)}).</p>
       </div>
 
-      <div className="stagger grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="stagger grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard
           label="Students Present"
           value={`${students.presentToday} / ${students.total}`}
@@ -44,56 +44,24 @@ export default function Dashboard() {
           icon={I('M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75')}
           accent={cardStyle}
         />
-        <StatCard
-          label="Active Readers"
-          value={`${system.activeReaders} / ${system.totalDevices}`}
-          sub="RFID devices online"
-          icon={I('M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z M10 18h4')}
-          accent="text-emerald-600 dark:text-emerald-400"
-        />
-        <StatCard
-          label="Pending Tasks"
-          value={tasks.pendingLeaves + tasks.pendingGatePasses + tasks.pendingPayroll}
-          sub={`${tasks.pendingLeaves} leaves · ${tasks.pendingGatePasses} gate passes · ${tasks.pendingPayroll} payroll`}
-          icon={I('M9 11H6a4 4 0 0 0-4 4v6h8 M15 11h3a4 4 0 0 1 4 4v6h-8 M12 8a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z')}
-          accent="text-amber-600 dark:text-amber-400"
-        />
       </div>
 
-      {(pendingGatePasses?.length > 0 || notificationFeed?.length > 0) && (
-        <div className="stagger grid grid-cols-1 gap-6 xl:grid-cols-3">
-          {pendingGatePasses?.length > 0 && (
-            <div className="card card-hover p-5">
-              <h3 className="mb-3 text-base font-semibold">Pending Gate Passes</h3>
-              <div className="space-y-2">
-                {pendingGatePasses.map(p => (
-                  <div key={p.id} className="flex items-center justify-between rounded-lg border border-amber-200 px-3 py-2 transition-colors hover:border-amber-400 dark:border-amber-500/30">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{p.full_name} <span className="text-xs text-slate-400">{p.student_id}</span></p>
-                      <p className="text-xs text-slate-400">{p.reason} · {fmtDate(p.exit_date)}</p>
-                    </div>
-                    <a href="/gate-passes" className="shrink-0 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">Review</a>
+      {notificationFeed?.length > 0 && (
+        <div className="stagger grid grid-cols-1 gap-6">
+          <div className="card card-hover p-5">
+            <h3 className="mb-3 text-base font-semibold">Notifications</h3>
+            <div className="max-h-[240px] space-y-2 overflow-y-auto pr-1">
+              {notificationFeed.map(n => (
+                <div key={n.id} className={`rounded-lg border px-3 py-2 transition-colors hover:border-brand-400 ${n.read ? 'border-slate-100 dark:border-slate-800' : 'border-brand-200 bg-brand-50/40 dark:border-brand-500/30 dark:bg-brand-500/10'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">{n.title}</p>
+                    <span className="shrink-0 text-[10px] text-slate-400">{timeAgo(n.created_at)}</span>
                   </div>
-                ))}
-              </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{n.message}</p>
+                </div>
+              ))}
             </div>
-          )}
-          {notificationFeed?.length > 0 && (
-            <div className="card card-hover p-5 xl:col-span-2">
-              <h3 className="mb-3 text-base font-semibold">Notifications</h3>
-              <div className="max-h-[240px] space-y-2 overflow-y-auto pr-1">
-                {notificationFeed.map(n => (
-                  <div key={n.id} className={`rounded-lg border px-3 py-2 transition-colors hover:border-brand-400 ${n.read ? 'border-slate-100 dark:border-slate-800' : 'border-brand-200 bg-brand-50/40 dark:border-brand-500/30 dark:bg-brand-500/10'}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium">{n.title}</p>
-                      <span className="shrink-0 text-[10px] text-slate-400">{timeAgo(n.created_at)}</span>
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{n.message}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       )}
 

@@ -26,9 +26,6 @@ router.get('/', async (req, res) => {
   const studentStatus = await statusCounts('student', date);
   const employeeStatus = await statusCounts('employee', date);
 
-  const activeReaders = (await db.prepare("SELECT COUNT(*) AS c FROM devices WHERE status='online'").get()).c;
-  const totalDevices = (await db.prepare("SELECT COUNT(*) AS c FROM devices").get()).c;
-
   const recentScans = await db.prepare(
     `SELECT l.*, CASE WHEN l.person_type='student' THEN st.full_name ELSE em.full_name END AS full_name
      FROM attendance_logs l
@@ -37,12 +34,7 @@ router.get('/', async (req, res) => {
      WHERE l.date = ? ORDER BY l.id DESC LIMIT 15`
   ).all(date);
 
-  const pendingLeaves = (await db.prepare("SELECT COUNT(*) AS c FROM leaves WHERE status='pending'").get()).c;
-  const pendingGatePasses = (await db.prepare("SELECT COUNT(*) AS c FROM gate_passes WHERE status='pending'").get()).c;
   const unreadNotifications = (await db.prepare("SELECT COUNT(*) AS c FROM notifications WHERE read = 0").get()).c;
-  const pendingPayroll = (await db.prepare(
-    "SELECT COUNT(*) AS c FROM employees e WHERE e.status='active' AND NOT EXISTS (SELECT 1 FROM payroll p WHERE p.employee_id=e.id AND p.month=? AND p.year=?)"
-  ).get(new Date().getMonth() + 1, new Date().getFullYear())).c;
 
   const timeline = await db.prepare(
     `SELECT a.*, CASE WHEN a.person_type='student' THEN st.full_name ELSE em.full_name END AS full_name
@@ -51,14 +43,6 @@ router.get('/', async (req, res) => {
      LEFT JOIN employees em ON em.id = a.person_id AND a.person_type='employee'
      WHERE a.date = ? AND a.in_time IS NOT NULL ORDER BY a.in_time LIMIT 20`
   ).all(date);
-
-  // Pending gate passes list (for quick approve)
-  const pendingGatePassRows = await db.prepare(
-    `SELECT gp.id, gp.pass_no, gp.reason, gp.exit_date, s.full_name, s.student_id, c.name AS class_name
-     FROM gate_passes gp JOIN students s ON s.id = gp.student_id
-     LEFT JOIN classes c ON c.id = s.class_id
-     WHERE gp.status = 'pending' ORDER BY gp.created_at DESC LIMIT 10`
-  ).all();
 
   // Notification feed for the current user
   const { role_name, person_type, person_id } = req.user;
@@ -93,11 +77,9 @@ router.get('/', async (req, res) => {
     date,
     students: { total: totalStudents, presentToday: scannedStudents, ...studentStatus },
     employees: { total: totalEmployees, presentToday: scannedEmployees, ...employeeStatus },
-    system: { activeReaders, totalDevices, recentScans, unreadNotifications },
-    tasks: { pendingLeaves, pendingGatePasses, pendingPayroll },
+    system: { recentScans, unreadNotifications },
     timeline,
     weekly,
-    pendingGatePasses: pendingGatePassRows,
     notificationFeed
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import api from '../lib/api';
 import useFetch from '../lib/useFetch';
 import Badge from '../components/Badge';
@@ -193,55 +193,43 @@ function SummaryView() {
 
 function ScanSimulator() {
   const [uid, setUid] = useState('');
-  const [deviceId, setDeviceId] = useState('DEV-MAIN-01');
-  const [location, setLocation] = useState('Main Entrance');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  const inputRef = useRef(null);
 
-  const scan = async () => {
-    if (!uid) return setError('RFID UID is required');
-    setBusy(true); setError(''); setResult(null);
+  const refocus = () => { setUid(''); inputRef.current?.focus(); };
+
+  const scan = async (value) => {
+    const id = (value ?? uid).trim();
+    if (!id) return setError('RFID UID is required');
+    setError(''); setResult(null);
     try {
-      const { data } = await api.post('/attendance/scan', { uid, device_id: deviceId, location });
+      const { data } = await api.post('/attendance/scan', { uid: id, device_id: 'DEV-MAIN-01', location: 'Main Entrance' });
       setResult(data.data);
     } catch (err) {
       setError(err.response?.data?.message || 'Scan failed');
-    } finally { setBusy(false); }
+    } finally {
+      refocus();
+    }
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      scan(e.target.value);
+    }
   };
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <div className="card p-6">
-        <h3 className="mb-4 text-base font-semibold">RFID Scan Simulator</h3>
-        <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">Simulate a card swipe at a reader. The engine toggles IN/OUT, applies late/half-day/overtime rules and deduplicates within the configured window.</p>
-        <div className="space-y-4">
-          <div>
-            <label className="label">RFID UID</label>
-            <input className="input font-mono" value={uid} onChange={e => setUid(e.target.value)} placeholder="STU000001 or EMP000001" autoFocus />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Device ID</label>
-              <select className="input" value={deviceId} onChange={e => setDeviceId(e.target.value)}>
-                {['DEV-MAIN-01', 'DEV-STAFF-01', 'DEV-BUS-01'].map(d => <option key={d}>{d}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">Location</label>
-              <input className="input" value={location} onChange={e => setLocation(e.target.value)} />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {['STU000001', 'STU000025', 'EMP000001', 'EMP000005', 'INVALID-999'].map(u => (
-              <button key={u} className="btn-secondary !px-3 !py-1 font-mono text-xs" onClick={() => setUid(u)}>{u}</button>
-            ))}
-          </div>
-          {error && <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">{error}</div>}
-          <button className="btn-primary w-full py-3 text-base" onClick={scan} disabled={busy}>
-            {busy ? <Spinner size={18} /> : 'Scan card'}
-          </button>
+        <h3 className="mb-4 text-base font-semibold">RFID Scanner</h3>
+        <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">Tap your card on the reader — the scan is recorded automatically. Keep this tab open.</p>
+        <div>
+          <label className="label">RFID UID</label>
+          <input ref={inputRef} className="input font-mono text-lg" value={uid} onChange={e => setUid(e.target.value)} onKeyDown={onKeyDown} placeholder="Waiting for card scan…" autoFocus />
         </div>
+        {error && <div className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">{error}</div>}
       </div>
 
       <div className="card p-6">

@@ -90,8 +90,7 @@ router.get('/monthly', requirePermission('view_reports'), async (req, res) => {
      ORDER BY a.person_type, full_name`
   ).all(from, to, personType, personType);
 
-  const holidays = (await db.prepare("SELECT COUNT(*) AS c FROM holidays WHERE date BETWEEN ? AND ?").get(from, to)).c;
-  ok(res, { month, year, from, to, holidays, rows });
+  ok(res, { month, year, from, to, rows });
 });
 
 // Shift report (staff)
@@ -186,23 +185,6 @@ router.get('/export/daily-csv', requirePermission('export_reports'), async (req,
 
 // ---- Phase 2 reports ----
 
-// Student Gate Pass report (all passes in a date range)
-router.get('/gate-passes', requirePermission('view_reports'), async (req, res) => {
-  const from = req.query.from || todayStr();
-  const to = req.query.to || todayStr();
-  const rows = await db.prepare(
-    `SELECT gp.pass_no, gp.reason, gp.exit_date, gp.status, gp.created_at AS requested_at, gp.used_at,
-       s.full_name, s.student_id, c.name AS class_name, sec.name AS section_name
-     FROM gate_passes gp
-     JOIN students s ON s.id = gp.student_id
-     LEFT JOIN classes c ON c.id = s.class_id
-     LEFT JOIN sections sec ON sec.id = s.section_id
-     WHERE gp.exit_date BETWEEN ? AND ?
-     ORDER BY gp.exit_date, s.full_name`
-  ).all(from, to);
-  ok(res, { from, to, rows });
-});
-
 // Monthly Attendance Summary (student-wise and class-wise %)
 router.get('/attendance-summary', requirePermission('view_reports'), async (req, res) => {
   const month = String(parseInt(req.query.month) || new Date().getMonth() + 1).padStart(2, '0');
@@ -241,59 +223,6 @@ router.get('/attendance-summary', requirePermission('view_reports'), async (req,
   ).all(from, to, classId, classId);
 
   ok(res, { month, year, from, to, classes: classRows, students: studentRows });
-});
-
-// Leave report (approved/rejected/pending by employee)
-router.get('/leaves', requirePermission('view_reports'), async (req, res) => {
-  const { from, to } = parseRange(req.query);
-  const rows = await db.prepare(
-    `SELECT l.*, e.full_name, e.employee_id, d.name AS department,
-       u.username AS reviewer
-     FROM leaves l
-     JOIN employees e ON e.id = l.person_id AND l.person_type='employee'
-     LEFT JOIN departments d ON d.id = e.department_id
-     LEFT JOIN users u ON u.id = l.approved_by
-     WHERE l.start_date BETWEEN ? AND ?
-     ORDER BY l.created_at DESC`
-  ).all(from, to);
-  ok(res, { from, to, rows });
-});
-
-// Export any report as CSV (generic): pass report=gate_passes|attendance_summary|leaves
-router.get('/export/generic', requirePermission('export_reports'), async (req, res) => {
-  const { report, from, to, month, year } = req.query;
-  const f = from || todayStr();
-  const t = to || f;
-  let rows = [];
-  let filename = 'report';
-  if (report === 'gate_passes') {
-    rows = await db.prepare(
-      `SELECT gp.pass_no, s.full_name, s.student_id, c.name AS class_name, gp.reason, gp.exit_date, gp.status, gp.used_at
-       FROM gate_passes gp JOIN students s ON s.id=gp.student_id LEFT JOIN classes c ON c.id=s.class_id
-       WHERE gp.exit_date BETWEEN ? AND ? ORDER BY gp.exit_date`
-    ).all(f, t);
-    filename = `gate-passes-${f}-${t}`;
-  } else if (report === 'leaves') {
-    rows = await db.prepare(
-      `SELECT e.full_name, e.employee_id, l.leave_type, l.start_date, l.end_date, l.days, l.status, l.reason
-       FROM leaves l JOIN employees e ON e.id=l.person_id AND l.person_type='employee'
-       WHERE l.start_date BETWEEN ? AND ? ORDER BY l.start_date`
-    ).all(f, t);
-    filename = `leaves-${f}-${t}`;
-  } else if (report === 'payroll') {
-    const m = String(parseInt(month) || new Date().getMonth() + 1).padStart(2, '0');
-    const y = parseInt(year) || new Date().getFullYear();
-    rows = await db.prepare(
-      `SELECT e.full_name, e.employee_id, d.name AS department, p.base_salary, p.present_days, p.absent_days, p.deductions, p.overtime_pay, p.net_salary, p.status
-       FROM payroll p JOIN employees e ON e.id=p.employee_id LEFT JOIN departments d ON d.id=e.department_id
-       WHERE p.month=? AND p.year=? ORDER BY e.full_name`
-    ).all(parseInt(m), y);
-    filename = `payroll-${y}-${m}`;
-  }
-  const csv = toCsv(rows);
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
-  res.send(csv);
 });
 
 module.exports = router;
