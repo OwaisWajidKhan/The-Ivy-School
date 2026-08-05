@@ -91,30 +91,53 @@ function main() {
   db.exec('BEGIN');
 
   const getStu = db.prepare('SELECT id, full_name, father_name, parent_contact FROM students WHERE student_id = ?');
-  const updStu = db.prepare('UPDATE students SET full_name = ?, father_name = ?, parent_contact = ? WHERE student_id = ?');
+  const updStu = db.prepare(
+    'UPDATE students SET full_name = ?, father_name = ?, parent_contact = ?, class_id = COALESCE(?, class_id), section_id = COALESCE(?, section_id) WHERE student_id = ?');
   const insStu = db.prepare(
     `INSERT INTO students (student_id, admission_number, full_name, father_name, class_id, section_id, parent_contact, status)
      VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`);
 
   let cls = db.prepare('SELECT id FROM classes WHERE name = ?').get(CLASS_NAME);
-  let classId = null, sectionId = null;
+  let classId = null, sectionId = null, createdClass = false;
   if (cls) {
     classId = cls.id;
-    const sec = db.prepare('SELECT id FROM sections WHERE class_id = ? AND name = ?').get(classId, SECTION_NAME);
-    sectionId = sec ? sec.id : null;
+  } else {
+    const ins = db.prepare('INSERT INTO classes (name) VALUES (?)').run(CLASS_NAME);
+    classId = Number(ins.lastInsertRowid);
+    createdClass = true;
+    console.log(`Created class "${CLASS_NAME}" (id ${classId})`);
+  }
+  let sec = db.prepare('SELECT id FROM sections WHERE class_id = ? AND name = ?').get(classId, SECTION_NAME);
+  if (sec) {
+    sectionId = sec.id;
+  } else {
+    const ins = db.prepare('INSERT INTO sections (class_id, name) VALUES (?, ?)').run(classId, SECTION_NAME);
+    sectionId = Number(ins.lastInsertRowid);
+    if (createdClass) console.log(`Created section "${SECTION_NAME}" (id ${sectionId})`);
   }
 
-  const report = { inserted: 0, updated: 0, unmatchedCols: 0, errors: [] };
-  for (const r of data) {
+  const report = { inserted: 0, updated: 0, unmatchedCols: 0, sanitized: 0, errors: [], duplicateIds: [] };
+  const seen = new Map();
+  const unique = data.filter((r) => {
+    const sid = String(r[cols.id]).trim();
+    if (seen.has(sid)) {
+      report.duplicateIds.push(`student_id ${sid} appears twice in sheet (kept first: "${seen.get(sid)}", skipped: "${(r[cols.name] || '').trim()}")`);
+      return false;
+    }
+    seen.set(sid, (r[cols.name] || '').trim());
+    return true;
+  });
+  for (const r of unique) {
     const sid = String(r[cols.id]).trim();
     const name = (r[cols.name] || '').trim() || null;
     const father = (r[cols.father] !== undefined ? (r[cols.father] || '').trim() : null) || null;
-    const phone = (r[cols.phone] !== undefined ? (r[cols.phone] || '').trim() : null) || null;
+    let phone = (r[cols.phone] !== undefined ? (r[cols.phone] || '').trim() : null) || null;
+    if (phone && /,\s*\d/.test(phone)) { phone = null; report.sanitized++; }
 
     const existing = getStu.get(sid);
     try {
       if (existing) {
-        updStu.run(name, father, phone, sid);
+        updStu.run(name, father, phone, classId, sectionId, sid);
         report.updated++;
       } else {
         insStu.run(sid, `ADM-${sid}`, name, father, classId, sectionId, phone);
@@ -129,9 +152,8 @@ function main() {
   db.close();
 
   console.log('\n=== Import complete ===');
-  console.log(`inserted new: ${report.inserted} | updated existing: ${report.updated} | errors: ${report.errors.length}`);
-  if (!cls) console.log(`NOTE: class "${CLASS_NAME}" not found - new students inserted without a class.`);
-  else if (!sectionId) console.log(`NOTE: section "${SECTION_NAME}" not found for "${CLASS_NAME}" - new students inserted without a section.`);
+  console.log(`inserted new: ${report.inserted} | updated existing: ${report.updated} | sanitized phones: ${report.sanitized} | duplicate ids skipped: ${report.duplicateIds.length} | errors: ${report.errors.length}`);
+  report.duplicateIds.forEach((d) => console.log('  DUP:', d));
   report.errors.forEach((e) => console.log('  -', e));
 }
 
