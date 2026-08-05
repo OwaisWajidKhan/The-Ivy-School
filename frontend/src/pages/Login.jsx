@@ -31,15 +31,15 @@ export default function Login() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-600 via-brand-700 to-slate-900 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-forest-600 via-forest-700 to-brand-800 p-4">
       <button onClick={toggle} className="hover-grow fixed right-4 top-4 rounded-lg bg-white/10 p-2 text-white backdrop-blur">
         {dark ? '☀️' : '🌙'}
       </button>
       <div className="w-full max-w-md">
         <div className="animate-slide-down mb-8 text-center">
-          <div className="animate-float mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-2xl font-black text-brand-700 shadow-lg">I</div>
+          <div className="animate-float mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-2xl font-black text-forest-700 shadow-lg">I</div>
           <h1 className="text-2xl font-bold text-white">The Ivy School</h1>
-          <p className="text-sm text-brand-100">Cloud Attendance Management System</p>
+          <p className="text-sm text-sage-200">Cloud Attendance Management System</p>
         </div>
 
         <form onSubmit={submit} className="animate-slide-up rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">

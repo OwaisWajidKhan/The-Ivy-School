@@ -25,8 +25,8 @@ function NavItem({ to, icon, label, onClick }) {
       className={({ isActive }) =>
         `group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
           isActive
-            ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300'
-            : 'text-slate-600 hover:translate-x-1 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100'
+            ? 'bg-white/15 text-white shadow-sm ring-1 ring-white/10'
+            : 'text-white/65 hover:translate-x-1 hover:bg-white/10 hover:text-white'
         }`
       }
     >
@@ -142,10 +142,10 @@ export default function Layout({ children }) {
   const sidebar = (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-3 px-5 py-5">
-        <div className="animate-float flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-lg font-bold text-white">I</div>
+        <div className="animate-float flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sage-400 to-forest-700 text-lg font-bold text-white shadow-lg shadow-black/20">I</div>
         <div>
-          <p className="text-sm font-bold leading-tight">The Ivy School</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Attendance System</p>
+          <p className="text-sm font-bold leading-tight text-white">The Ivy School</p>
+          <p className="text-xs text-sage-200/80">Attendance System</p>
         </div>
       </div>
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-4">
@@ -155,7 +155,7 @@ export default function Layout({ children }) {
           return (
             <div key={i} className="animate-fade-in">
               {group.label && (
-                <p className="mb-1.5 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">{group.label}</p>
+                <p className="mb-1.5 px-3 text-xs font-semibold uppercase tracking-wider text-sage-200/60">{group.label}</p>
               )}
               <div className="stagger space-y-0.5">
                 {visible.map(it => <NavItem key={it.to} {...it} onClick={() => setMobileOpen(false)} />)}
@@ -164,10 +164,10 @@ export default function Layout({ children }) {
           );
         })}
       </nav>
-      <div className="border-t border-slate-200 p-3 dark:border-slate-800">
-        <div className="hover-lift rounded-lg bg-slate-100 p-3 dark:bg-slate-800">
-          <p className="text-sm font-semibold capitalize">{user?.username}</p>
-          <p className="text-xs text-slate-500 capitalize dark:text-slate-400">{user?.role?.replace(/_/g, ' ')}</p>
+      <div className="border-t border-white/10 p-3">
+        <div className="hover-lift rounded-lg bg-white/10 p-3 ring-1 ring-white/10">
+          <p className="text-sm font-semibold capitalize text-white">{user?.username}</p>
+          <p className="text-xs text-sage-200/80 capitalize">{user?.role?.replace(/_/g, ' ')}</p>
         </div>
       </div>
     </div>
@@ -175,26 +175,26 @@ export default function Layout({ children }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 lg:block">
+      <aside className="hidden w-64 shrink-0 border-r border-forest-800 bg-gradient-to-b from-forest-700 via-forest-700 to-forest-900 lg:block">
         {sidebar}
       </aside>
 
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-slate-900/50" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 h-full w-64 border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <div className="absolute inset-0 bg-forest-950/60" onClick={() => setMobileOpen(false)} />
+          <aside className="absolute left-0 top-0 h-full w-64 border-r border-forest-800 bg-gradient-to-b from-forest-700 via-forest-700 to-forest-900">
             {sidebar}
           </aside>
         </div>
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-900">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-sage-200/70 bg-white/80 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
           <div className="flex items-center gap-3">
-            <button onClick={() => setMobileOpen(true)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden">
+            <button onClick={() => setMobileOpen(true)} className="rounded-lg p-2 text-slate-500 hover:bg-sage-100 dark:hover:bg-slate-800 lg:hidden">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" /></svg>
             </button>
-            <h1 className="text-lg font-bold tracking-tight">Attendance Management</h1>
+            <h1 className="text-gradient text-lg font-bold tracking-tight">Attendance Management</h1>
           </div>
           <div className="flex items-center gap-2">
             <NotificationBell />

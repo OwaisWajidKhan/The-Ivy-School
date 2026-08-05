@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import api from '../lib/api';
 import useFetch from '../lib/useFetch';
 import Modal from '../components/Modal';
@@ -15,8 +15,7 @@ export default function Students() {
   const toast = useToast();
   const [query, setQuery] = useState('');
   const [classId, setClassId] = useState('');
-  const [params, setParams] = useState({});
-  const { data, loading, reload } = useFetch('/students', [params], { params });
+  const { data, loading, reload } = useFetch('/students', [], { params: { limit: 10000 } });
   const { data: classes } = useFetch('/reference/classes');
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(empty);
@@ -26,11 +25,17 @@ export default function Students() {
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState(null);
 
-  useEffect(() => {
-    setParams({ q: query || undefined, class_id: classId || undefined, limit: 10000 });
-  }, [query, classId]);
+  const filtered = useMemo(() => {
+    const all = data?.items || [];
+    const q = query.trim().toLowerCase();
+    return all.filter(s =>
+      (!classId || String(s.class_id) === String(classId)) &&
+      (!q || s.full_name?.toLowerCase().includes(q) || s.student_id?.toLowerCase().includes(q) ||
+        s.rfid_uid?.toLowerCase().includes(q) || (s.rfid_uid_2 || '').toLowerCase().includes(q))
+    );
+  }, [data, query, classId]);
 
-  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(data?.items);
+  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(filtered);
 
   const loadSections = async (classId, autoSelect = false) => {
     if (!classId) { setForm(f => ({ ...f, section_id: '' })); return; }

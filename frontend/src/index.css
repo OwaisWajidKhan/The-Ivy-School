@@ -3,15 +3,27 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    @apply font-sans;
+  }
   body {
-    @apply bg-[#f6f6f6] text-slate-800 antialiased dark:bg-slate-950 dark:text-slate-100;
+    @apply bg-sage-50 text-slate-800 antialiased dark:bg-slate-950 dark:text-slate-100;
+    background-image: radial-gradient(1200px 600px at 85% -10%, rgba(130, 167, 147, 0.18), transparent 60%),
+                      radial-gradient(1000px 500px at -10% 110%, rgba(99, 34, 74, 0.12), transparent 60%);
+    background-attachment: fixed;
+  }
+  ::selection {
+    @apply bg-brand-600 text-white;
   }
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
   ::-webkit-scrollbar-thumb {
-    @apply rounded bg-slate-300 dark:bg-slate-700;
+    @apply rounded bg-sage-400/70 dark:bg-slate-700;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-forest-500;
   }
   ::-webkit-scrollbar-track {
     @apply bg-transparent;
@@ -109,16 +121,16 @@
     transform: scale(0.95);
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+    @apply btn bg-forest-600 text-white hover:bg-forest-700;
   }
   .btn-primary:not(:disabled):hover {
-    @apply shadow-lg shadow-brand-600/30;
+    @apply shadow-lg shadow-forest-600/30;
   }
   .btn-secondary {
-    @apply btn border border-brand-600 bg-transparent text-brand-700 hover:bg-brand-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800;
+    @apply btn border border-forest-500/60 bg-transparent text-forest-700 hover:bg-sage-50 dark:border-forest-400/60 dark:text-sage-200 dark:hover:bg-slate-800;
   }
   .btn-secondary:not(:disabled):hover {
-    @apply shadow-md shadow-brand-600/15;
+    @apply shadow-md shadow-forest-600/15;
   }
   .btn-danger {
     @apply btn bg-rose-600 text-white hover:bg-rose-700;
@@ -140,7 +152,7 @@
     @apply mb-1 block text-sm font-medium text-slate-600 dark:text-slate-300;
   }
   .th {
-    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-brand-700/70 dark:text-slate-400;
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-brand-700/70 dark:text-sage-300;
   }
   .td {
     @apply px-4 py-3 text-sm text-slate-700 dark:text-slate-200;
@@ -151,6 +163,9 @@
   }
   .badge:hover {
     transform: scale(1.08);
+  }
+  .text-gradient {
+    @apply bg-gradient-to-r from-forest-600 via-brand-600 to-brand-400 bg-clip-text text-transparent;
   }
 }
 
