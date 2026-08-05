@@ -32,22 +32,37 @@ router.post('/scan', async (req, res) => {
 });
 
 // Manual attendance mark (admin override)
+// Accepts the student/employee numeric id OR the human Student ID / Employee ID (e.g. S-0001).
 router.post('/manual', requirePermission('manage_attendance'), async (req, res) => {
   const { person_type, person_id, date, in_time, out_time, status, note } = req.body;
-  if (!person_type || !person_id) return fail(res, 'person_type and person_id required');
+  if (!person_type || person_id === undefined || person_id === '') return fail(res, 'person_type and person_id required');
+  const code = String(person_id).trim();
+  const numeric = /^\d+$/.test(code) ? Number(code) : null;
+  let resolved;
+  if (person_type === 'student') {
+    resolved = numeric
+      ? (await db.prepare('SELECT id FROM students WHERE id = ?').get(numeric))?.id
+      : (await db.prepare('SELECT id FROM students WHERE student_id = ?').get(code))?.id;
+  } else if (person_type === 'employee') {
+    resolved = numeric
+      ? (await db.prepare('SELECT id FROM employees WHERE id = ?').get(numeric))?.id
+      : (await db.prepare('SELECT id FROM employees WHERE employee_id = ?').get(code))?.id;
+  }
+  if (!resolved) return fail(res, `${person_type === 'student' ? 'Student' : 'Employee'} not found for ID "${code}"`);
+
   const existing = await db.prepare(
     'SELECT * FROM attendance_summary WHERE person_type = ? AND person_id = ? AND date = ?'
-  ).get(person_type, person_id, date || todayStr());
+  ).get(person_type, resolved, date || todayStr());
   if (existing) {
     await db.prepare('UPDATE attendance_summary SET in_time=?, out_time=?, status=? WHERE id=?')
       .run(in_time || existing.in_time, out_time !== undefined ? out_time : existing.out_time, status || existing.status, existing.id);
-    audit(req.user, 'manual_attendance_update', person_type, person_id, { date, in_time, out_time, status }, req.ip);
+    audit(req.user, 'manual_attendance_update', person_type, resolved, { date, in_time, out_time, status }, req.ip);
     ok(res, await db.prepare('SELECT * FROM attendance_summary WHERE id = ?').get(existing.id));
   } else {
     const info = await db.prepare(
       'INSERT INTO attendance_summary (person_type, person_id, date, in_time, out_time, status, late_minutes) VALUES (?,?,?,?,?,?,?)'
-    ).run(person_type, person_id, date || todayStr(), in_time || null, out_time || null, status || 'present', 0);
-    audit(req.user, 'manual_attendance_create', person_type, person_id, { date, in_time, out_time, status }, req.ip);
+    ).run(person_type, resolved, date || todayStr(), in_time || null, out_time || null, status || 'present', 0);
+    audit(req.user, 'manual_attendance_create', person_type, resolved, { date, in_time, out_time, status }, req.ip);
     ok(res, await db.prepare('SELECT * FROM attendance_summary WHERE id = ?').get(info.lastInsertRowid), 201);
   }
 });

@@ -340,11 +340,11 @@ function ManualMark({ open, onClose, onSaved }) {
         {error && <div className="col-span-full rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">{error}</div>}
         <div>
           <label className="label">Person type</label>
-          <select className="input" value={form.person_type} onChange={e => setForm({ ...form, person_type: e.target.value })}>
+          <select className="input" value={form.person_type} onChange={e => setForm({ ...form, person_type: e.target.value, person_id: '' })}>
             <option value="student">Student</option><option value="employee">Employee</option>
           </select>
         </div>
-        <div><label className="label">Person ID</label><input className="input" type="number" required value={form.person_id} onChange={e => setForm({ ...form, person_id: e.target.value })} /></div>
+        <div><label className="label">{form.person_type === 'student' ? 'Student ID' : 'Employee ID'}</label><input className="input" required value={form.person_id} onChange={e => setForm({ ...form, person_id: e.target.value })} placeholder={form.person_type === 'student' ? 'e.g. S-0001' : 'e.g. E-0001'} /></div>
         <div><label className="label">Date</label><input className="input" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
         <div>
           <label className="label">Status</label>
