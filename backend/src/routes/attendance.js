@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { db, getSetting } = require('../db/schema');
 const { requireAuth, requirePermission } = require('../middleware/auth');
-const { ok, fail, audit, paginate, todayStr, nowStr } = require('../utils/helpers');
+const { ok, fail, audit, paginate, todayStr, nowStr, toExcel } = require('../utils/helpers');
 const { toDbString } = require('../utils/timezone');
 const { processScan, lookupPerson } = require('../services/attendanceEngine');
 
@@ -40,13 +40,11 @@ router.post('/manual', requirePermission('manage_attendance'), async (req, res) 
   const numeric = /^\d+$/.test(code) ? Number(code) : null;
   let resolved;
   if (person_type === 'student') {
-    resolved = numeric
-      ? (await db.prepare('SELECT id FROM students WHERE id = ?').get(numeric))?.id
-      : (await db.prepare('SELECT id FROM students WHERE student_id = ?').get(code))?.id;
+    resolved = (await db.prepare('SELECT id FROM students WHERE student_id = ?').get(code))?.id
+      ?? (numeric ? (await db.prepare('SELECT id FROM students WHERE id = ?').get(numeric))?.id : null);
   } else if (person_type === 'employee') {
-    resolved = numeric
-      ? (await db.prepare('SELECT id FROM employees WHERE id = ?').get(numeric))?.id
-      : (await db.prepare('SELECT id FROM employees WHERE employee_id = ?').get(code))?.id;
+    resolved = (await db.prepare('SELECT id FROM employees WHERE employee_id = ?').get(code))?.id
+      ?? (numeric ? (await db.prepare('SELECT id FROM employees WHERE id = ?').get(numeric))?.id : null);
   }
   if (!resolved) return fail(res, `${person_type === 'student' ? 'Student' : 'Employee'} not found for ID "${code}"`);
 
@@ -172,11 +170,15 @@ router.get('/export', requirePermission('view_attendance'), async (req, res) => 
      LEFT JOIN departments d ON d.id = em.department_id
      ${whereSql} ORDER BY a.date DESC, a.person_type, name LIMIT ? OFFSET ?`
   ).all(...params, limit, offset);
-  const csv = toCsv(rows);
+  const xls = toExcel(rows, [
+    ['date', 'Date'], ['person_type', 'Type'], ['name', 'Name'], ['code', 'ID'],
+    ['class_name', 'Class'], ['section_name', 'Section'], ['department', 'Department'],
+    ['in_time', 'Check In'], ['out_time', 'Check Out'], ['working_hours', 'Hours'], ['status', 'Status']
+  ]);
   const name = req.query.date ? req.query.date : `${req.query.from || 'start'}_${req.query.to || 'end'}`;
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="attendance-${name}.csv"`);
-  res.send(csv);
+  res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="attendance-${name}.xls"`);
+  res.send(xls);
 });
 
 // Export raw scan logs as CSV (filters matching /logs)
@@ -199,11 +201,14 @@ router.get('/export-logs', requirePermission('view_attendance'), async (req, res
      ${whereSql} ORDER BY l.id DESC LIMIT ? OFFSET ?`
   )
     .all(...params, limit, offset);
-  const csv = toCsv(rows);
+  const xls = toExcel(rows, [
+    ['id', '#'], ['scan_time', 'Scan Time'], ['name', 'Person'], ['card_uid', 'Card ID'],
+    ['person_type', 'Type'], ['direction', 'In/Out'], ['device_name', 'Device'], ['location', 'Location']
+  ]);
   const name = req.query.date || 'logs';
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="scan-logs-${name}.csv"`);
-  res.send(csv);
+  res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="scan-logs-${name}.xls"`);
+  res.send(xls);
 });
 
 function csvEscape(v) {

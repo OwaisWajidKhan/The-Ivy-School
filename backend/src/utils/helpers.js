@@ -61,6 +61,22 @@ function paginate(page = 1, limit = 25) {
   return { page: p, limit: l, offset: (p - 1) * l };
 }
 
+function xlsEscape(v) {
+  const s = v === null || v === undefined ? '' : String(v);
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Render rows to an HTML-table Excel file (.xls) so it opens as a true grid.
+// columns = array of [key, headerLabel]. Omitted => use row keys.
+function toExcel(rows, columns) {
+  const cols = columns && columns.length
+    ? columns
+    : (Object.keys(rows[0] || {}).map(k => [k, k.replace(/_/g, ' ')]));
+  const header = cols.map(([, label]) => `<th>${xlsEscape(label)}</th>`).join('');
+  const body = rows.map(r => `<tr>${cols.map(([k]) => `<td>${xlsEscape(r[k])}</td>`).join('')}</tr>`).join('');
+  return '\uFEFF<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"></head><body><table><thead><tr>' + header + '</tr></thead><tbody>' + body + '</tbody></table></body></html>';
+}
+
 module.exports = {
   ok,
   fail,
@@ -70,5 +86,6 @@ module.exports = {
   minutesBetween,
   hhmmToMinutes,
   audit,
-  paginate
+  paginate,
+  toExcel
 };
