@@ -51,7 +51,7 @@ router.get('/search', async (req, res) => {
   if (!q || !String(q).trim()) return ok(res, { items: [] });
   const term = `%${String(q).trim()}%`;
   const rows = await db.prepare(
-    `SELECT s.id, s.full_name, s.student_id, s.rfid_uid, s.photo, s.class_id, s.status,
+    `SELECT s.id, s.full_name, s.student_id, s.rfid_uid, s.rfid_uid_2, s.photo, s.class_id, s.status,
        c.name AS class_name, sec.name AS section_name,
        (SELECT status FROM rfid_cards rc WHERE rc.uid = s.rfid_uid) AS card_status,
        (SELECT direction FROM attendance_logs l WHERE l.person_type='student' AND l.person_id=s.id ORDER BY l.id DESC LIMIT 1) AS last_direction,
@@ -59,9 +59,9 @@ router.get('/search', async (req, res) => {
      FROM students s
      LEFT JOIN classes c ON c.id = s.class_id
      LEFT JOIN sections sec ON sec.id = s.section_id
-     WHERE s.full_name LIKE ? OR s.student_id LIKE ? OR s.admission_number LIKE ? OR s.rfid_uid LIKE ? OR s.parent_contact LIKE ?
+     WHERE s.full_name LIKE ? OR s.student_id LIKE ? OR s.admission_number LIKE ? OR s.rfid_uid LIKE ? OR s.rfid_uid_2 LIKE ? OR s.parent_contact LIKE ?
      ORDER BY s.full_name LIMIT 12`
-  ).all(term, term, term, term, term);
+  ).all(term, term, term, term, term, term);
   ok(res, { items: rows });
 });
 
@@ -194,20 +194,29 @@ router.post('/', upload.single('photo'), requirePermission('manage_students'), a
     : b.photo || null;
 
   const insert = await db.prepare(`
-    INSERT INTO students (student_id, admission_number, rfid_uid, full_name, father_name, class_id, section_id, roll_number, dob, gender, phone, parent_contact, address, status, photo)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    INSERT INTO students (student_id, admission_number, rfid_uid, rfid_uid_2, full_name, father_name, class_id, section_id, roll_number, dob, gender, phone, parent_contact, address, status, photo)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `);
+  const registerCard = (uid, personId) => {
+    if (uid) {
+      return db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
+        .run(String(uid), 'student', personId, new Date().toISOString(), 'active');
+    }
+    return Promise.resolve();
+  };
+  const cardOwner = async (uid) => db.prepare('SELECT id FROM students WHERE rfid_uid = ? OR rfid_uid_2 = ?').get(String(uid), String(uid));
   try {
+    for (const uid of [b.rfid_uid, b.rfid_uid_2]) {
+      if (uid && await cardOwner(uid)) return fail(res, 'Duplicate record (RFID card already assigned to another student)');
+    }
     const info = await insert.run(
-      studentId, admissionNumber, b.rfid_uid || null, b.full_name, b.father_name || null,
+      studentId, admissionNumber, b.rfid_uid || null, b.rfid_uid_2 || null, b.full_name, b.father_name || null,
       b.class_id || null, b.section_id || null, b.roll_number || null, b.dob || null,
       b.gender || null, b.phone || null, b.parent_contact || null, b.address || null,
       b.status || 'active', photo
     );
-    if (b.rfid_uid) {
-      await db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
-        .run(b.rfid_uid, 'student', info.lastInsertRowid, new Date().toISOString(), 'active');
-    }
+    await registerCard(b.rfid_uid, info.lastInsertRowid);
+    await registerCard(b.rfid_uid_2, info.lastInsertRowid);
     audit(req.user, 'create_student', 'student', info.lastInsertRowid, { name: b.full_name }, req.ip);
     const created = await db.prepare(`${selectBase} WHERE s.id = ?`).get(info.lastInsertRowid);
     ok(res, created, 201);
@@ -227,13 +236,19 @@ router.put('/:id', upload.single('photo'), requirePermission('manage_students'),
     : (b.photo !== undefined ? b.photo : existing.photo);
   if (req.file && existing.photo) await storage.deleteUpload(existing.photo);
 
+  const cardOwner = async (uid) => db.prepare('SELECT id FROM students WHERE id != ? AND (rfid_uid = ? OR rfid_uid_2 = ?)').get(existing.id, String(uid), String(uid));
+  for (const uid of [b.rfid_uid !== undefined ? b.rfid_uid : existing.rfid_uid, b.rfid_uid_2 !== undefined ? b.rfid_uid_2 : existing.rfid_uid_2]) {
+    if (uid && await cardOwner(uid)) return fail(res, 'Duplicate record (RFID card already assigned to another student)');
+  }
+
   await db.prepare(`
-    UPDATE students SET student_id=?, admission_number=?, rfid_uid=?, full_name=?, father_name=?,
+    UPDATE students SET student_id=?, admission_number=?, rfid_uid=?, rfid_uid_2=?, full_name=?, father_name=?,
       class_id=?, section_id=?, roll_number=?, dob=?, gender=?, phone=?, parent_contact=?, address=?, status=?, photo=?
     WHERE id=?
   `).run(
     b.student_id || existing.student_id, b.admission_number || existing.admission_number,
     b.rfid_uid !== undefined ? b.rfid_uid : existing.rfid_uid,
+    b.rfid_uid_2 !== undefined ? b.rfid_uid_2 : existing.rfid_uid_2,
     b.full_name || existing.full_name, b.father_name !== undefined ? b.father_name : existing.father_name,
     b.class_id !== undefined ? b.class_id : existing.class_id,
     b.section_id !== undefined ? b.section_id : existing.section_id,
@@ -248,6 +263,10 @@ router.put('/:id', upload.single('photo'), requirePermission('manage_students'),
   if (b.rfid_uid && b.rfid_uid !== existing.rfid_uid) {
     await db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
       .run(b.rfid_uid, 'student', existing.id, new Date().toISOString(), 'active');
+  }
+  if (b.rfid_uid_2 && b.rfid_uid_2 !== existing.rfid_uid_2) {
+    await db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
+      .run(String(b.rfid_uid_2), 'student', existing.id, new Date().toISOString(), 'active');
   }
   audit(req.user, 'update_student', 'student', existing.id, { name: b.full_name }, req.ip);
   ok(res, await db.prepare(`${selectBase} WHERE s.id = ?`).get(existing.id));

@@ -1,16 +1,13 @@
 import { useState, useEffect } from 'react';
 import api from '../lib/api';
 import useFetch from '../lib/useFetch';
-import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import Spinner, { PageLoader, EmptyState } from '../components/Spinner';
-import { fmtDate } from '../lib/format';
 import { useToast } from '../context/ToastContext';
 
 const empty = {
-  full_name: '', father_name: '', student_id: '', admission_number: '', rfid_uid: '',
-  class_id: '', section_id: '', roll_number: '', dob: '', gender: 'Male',
-  phone: '', parent_contact: '', address: '', status: 'active'
+  full_name: '', student_id: '', rfid_uid: '', rfid_uid_2: '',
+  class_id: '', section_id: '', father_name: '', parent_contact: '', status: 'active'
 };
 
 export default function Students() {
@@ -20,7 +17,6 @@ export default function Students() {
   const [params, setParams] = useState({});
   const { data, loading, reload } = useFetch('/students', [params], { params });
   const { data: classes } = useFetch('/reference/classes');
-  const [sections, setSections] = useState([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(empty);
   const [editingId, setEditingId] = useState(null);
@@ -33,20 +29,18 @@ export default function Students() {
     setParams({ q: query || undefined, class_id: classId || undefined });
   }, [query, classId]);
 
-  const loadSections = async (classId) => {
-    if (!classId) { setSections([]); return; }
+  const loadSections = async (classId, autoSelect = false) => {
+    if (!classId) { setForm(f => ({ ...f, section_id: '' })); return; }
     const { data } = await api.get('/reference/sections', { params: { class_id: classId } });
-    setSections(data.data);
+    if (autoSelect && data.data?.[0]) setForm(f => ({ ...f, section_id: data.data[0].id }));
   };
 
   const openAdd = () => { setForm(empty); setEditingId(null); setError(''); setPhotoFile(null); setOpen(true); };
   const openEdit = (s) => {
     setForm({
-      full_name: s.full_name, father_name: s.father_name || '', student_id: s.student_id,
-      admission_number: s.admission_number, rfid_uid: s.rfid_uid || '', class_id: s.class_id || '',
-      section_id: s.section_id || '', roll_number: s.roll_number || '', dob: s.dob || '',
-      gender: s.gender || 'Male', phone: s.phone || '', parent_contact: s.parent_contact || '',
-      address: s.address || '', status: s.status
+      full_name: s.full_name, student_id: s.student_id, rfid_uid: s.rfid_uid || '',
+      rfid_uid_2: s.rfid_uid_2 || '', class_id: s.class_id || '', section_id: s.section_id || '',
+      father_name: s.father_name || '', parent_contact: s.parent_contact || '', status: s.status
     });
     setEditingId(s.id);
     setError('');
@@ -94,7 +88,7 @@ export default function Students() {
 
       <div className="card p-4">
         <div className="grid gap-3 sm:grid-cols-3">
-          <input className="input" placeholder="Search name, ID, admission, RFID…" value={query} onChange={e => setQuery(e.target.value)} />
+          <input className="input" placeholder="Search name, ID, RFID…" value={query} onChange={e => setQuery(e.target.value)} />
           <select className="input" value={classId} onChange={e => setClassId(e.target.value)}>
             <option value="">All classes</option>
             {classes?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -108,11 +102,10 @@ export default function Students() {
             <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
               <tr>
                 <th className="th">Student</th>
-                <th className="th">ID / Admission</th>
+                <th className="th">Student ID</th>
                 <th className="th">Class</th>
-                <th className="th">RFID UID</th>
-                <th className="th">Contact</th>
-                <th className="th">Status</th>
+                <th className="th">RFID Cards</th>
+                <th className="th">Father's Contact</th>
                 <th className="th text-right">Actions</th>
               </tr>
             </thead>
@@ -132,14 +125,15 @@ export default function Students() {
                   </td>
                   <td className="td">
                     <p className="font-mono text-xs">{s.student_id}</p>
-                    <p className="text-xs text-slate-400">{s.admission_number}</p>
                   </td>
                   <td className="td">{s.class_name || '—'} · {s.section_name || '—'}</td>
-                  <td className="td font-mono text-xs">{s.rfid_uid || '—'}</td>
+                  <td className="td font-mono text-xs">
+                    <p>{s.rfid_uid || '—'}</p>
+                    {s.rfid_uid_2 && <p className="text-slate-400">{s.rfid_uid_2}</p>}
+                  </td>
                   <td className="td">
                     <p className="text-xs">{s.parent_contact || '—'}</p>
                   </td>
-                  <td className="td"><Badge status={s.status} /></td>
                   <td className="td text-right">
                     <button className="btn-secondary !px-2.5 !py-1 text-xs" onClick={() => openEdit(s)}>Edit</button>
                     <button className="btn-danger ml-1.5 !px-2.5 !py-1 text-xs" onClick={() => setDeleting(s)}>Delete</button>
@@ -160,45 +154,21 @@ export default function Students() {
         }>
         <form id="student-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
           {error && <div className="col-span-full rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">{error}</div>}
-          <div><label className="label">Full name *</label><input className="input" required value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} /></div>
-          <div><label className="label">Father name</label><input className="input" value={form.father_name} onChange={e => setForm({ ...form, father_name: e.target.value })} /></div>
+          <div><label className="label">Student Name *</label><input className="input" required value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} /></div>
           <div><label className="label">Student ID</label><input className="input" value={form.student_id} onChange={e => setForm({ ...form, student_id: e.target.value })} placeholder="S-0001" /></div>
-          <div><label className="label">Admission number</label><input className="input" value={form.admission_number} onChange={e => setForm({ ...form, admission_number: e.target.value })} /></div>
-          <div><label className="label">RFID UID</label><input className="input font-mono" value={form.rfid_uid} onChange={e => setForm({ ...form, rfid_uid: e.target.value })} placeholder="STU000001" /></div>
-          <div><label className="label">Roll number</label><input className="input" type="number" value={form.roll_number} onChange={e => setForm({ ...form, roll_number: e.target.value })} /></div>
           <div>
-            <label className="label">Class</label>
-            <select className="input" value={form.class_id} onChange={e => { setForm({ ...form, class_id: e.target.value, section_id: '' }); loadSections(e.target.value); }}>
+            <label className="label">Student Class</label>
+            <select className="input" value={form.class_id} onChange={e => { setForm({ ...form, class_id: e.target.value, section_id: '' }); loadSections(e.target.value, true); }}>
               <option value="">Select class</option>
               {classes?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+          <div><label className="label">RFID Card 1</label><input className="input font-mono" value={form.rfid_uid} onChange={e => setForm({ ...form, rfid_uid: e.target.value })} placeholder="Card 1 UID" /></div>
+          <div><label className="label">RFID Card 2</label><input className="input font-mono" value={form.rfid_uid_2} onChange={e => setForm({ ...form, rfid_uid_2: e.target.value })} placeholder="Card 2 UID (optional)" /></div>
+          <div><label className="label">Father's Name</label><input className="input" value={form.father_name} onChange={e => setForm({ ...form, father_name: e.target.value })} /></div>
+          <div><label className="label">Father's Contact Number</label><input className="input" value={form.parent_contact} onChange={e => setForm({ ...form, parent_contact: e.target.value })} /></div>
           <div>
-            <label className="label">Section</label>
-            <select className="input" value={form.section_id} onChange={e => setForm({ ...form, section_id: e.target.value })} disabled={!form.class_id}>
-              <option value="">Select section</option>
-              {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-          <div><label className="label">Date of birth</label><input className="input" type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} /></div>
-          <div>
-            <label className="label">Gender</label>
-            <select className="input" value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })}>
-              <option>Male</option><option>Female</option><option>Other</option>
-            </select>
-          </div>
-          <div><label className="label">Phone</label><input className="input" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></div>
-          <div><label className="label">Parent contact</label><input className="input" value={form.parent_contact} onChange={e => setForm({ ...form, parent_contact: e.target.value })} /></div>
-          <div className="sm:col-span-2"><label className="label">Address</label><input className="input" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
-          <div>
-            <label className="label">Status</label>
-            <select className="input" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
-              <option value="active">Active</option><option value="inactive">Inactive</option>
-              <option value="graduated">Graduated</option><option value="transferred">Transferred</option>
-            </select>
-          </div>
-          <div>
-            <label className="label">Photo</label>
+            <label className="label">Profile Picture</label>
             <input className="input" type="file" accept="image/*" onChange={e => setPhotoFile(e.target.files[0])} />
           </div>
         </form>
