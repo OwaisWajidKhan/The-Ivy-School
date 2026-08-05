@@ -3,7 +3,9 @@ node_modules/
 
 # Build output
 frontend/dist/
+# DB + private data
 backend/data/*.db*
+backend/data/sync/
 
 # Uploads
 backend/uploads/*
