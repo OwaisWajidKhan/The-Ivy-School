@@ -32,14 +32,15 @@ async function ensurePhase2ReferenceData() {
   }
 
   const insertDesignation = await db.prepare('INSERT OR IGNORE INTO designations (name, department_id, description) VALUES (?,?,?)');
-  const teachDept = deptIds['Teaching Staff'];
+  const teachDept = deptIds['Teachers'];
   await insertDesignation.run('Senior Teacher', teachDept, 'Lead teacher');
   await insertDesignation.run('Teacher', teachDept, 'Class teacher');
   await insertDesignation.run('Subject Specialist', teachDept, 'Subject expert');
-  await insertDesignation.run('Office Manager', deptIds['Administration'], 'Office administration');
-  await insertDesignation.run('Security Guard', deptIds['Security Staff'], 'Security staff');
-  await insertDesignation.run('Housekeeper', deptIds['Domestic Staff'], 'Domestic staff');
-  await insertDesignation.run('Bus Driver', deptIds['Transport'], 'Transport staff');
+  await insertDesignation.run('Admin Officer', deptIds['Admin and Support'], 'Administration and support');
+  await insertDesignation.run('Support Staff', deptIds['Support Staff'], 'Support staff');
+  await insertDesignation.run('Head of School', deptIds['Head of School'], 'School leadership');
+  await insertDesignation.run('Accountant', deptIds['Finance'], 'Finance and accounts');
+  await insertDesignation.run('IT Officer', deptIds['IT'], 'Information technology');
   const designations = {};
   for (const d of await db.prepare('SELECT * FROM designations').all()) designations[d.name] = d.id;
 
@@ -101,11 +102,12 @@ async function seed() {
   // Departments
   const insertDept = await db.prepare('INSERT OR IGNORE INTO departments (name, description) VALUES (?, ?)');
   const depts = [
-    ['Teaching Staff', 'Teachers and academic staff'],
-    ['Administration', 'School administration and management'],
-    ['Domestic Staff', 'Housekeeping and kitchen staff'],
-    ['Security Staff', 'Security guards'],
-    ['Transport', 'Drivers and transport staff']
+    ['Support Staff', 'Support and non-teaching staff'],
+    ['Teachers', 'Teachers and academic staff'],
+    ['Admin and Support', 'School administration and support'],
+    ['Head of School', 'Head of School and leadership'],
+    ['Finance', 'Finance and accounts'],
+    ['IT', 'Information technology']
   ];
   for (const d of depts) await insertDept.run(d[0], d[1]);
   const deptIds = {};
@@ -191,15 +193,15 @@ async function seed() {
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `);
   const empDefs = [
-    ['T-001', 'EMP000001', 'Dr. Naveed Iqbal', '35201-1234567-1', '03001234561', 'Teaching Staff', 'Senior Teacher', 85000, 'Morning', 8, 1.5, 12],
-    ['T-002', 'EMP000002', 'Ms. Saira Tariq', '35202-2345678-2', '03001234562', 'Teaching Staff', 'Teacher', 65000, 'Morning', 8, 1.5, 10],
-    ['T-003', 'EMP000003', 'Mr. Fahad Jamil', '35203-3456789-3', '03001234563', 'Teaching Staff', 'Teacher', 60000, 'Morning', 8, 1.5, 8],
-    ['ADM-001', 'EMP000004', 'Mrs. Shazia Raza', '35204-4567890-4', '03001234564', 'Administration', 'Office Manager', 70000, 'Morning', 8, 1.5, 14],
-    ['SEC-001', 'EMP000005', 'Mr. Imran Yousaf', '35205-5678901-5', '03001234565', 'Security Staff', 'Security Guard', 35000, 'Evening', 8, 1.25, 6],
-    ['SEC-002', 'EMP000006', 'Mr. Akram Pervaiz', '35206-6789012-6', '03001234566', 'Security Staff', 'Security Guard', 32000, 'Evening', 8, 1.25, 4],
-    ['DOM-001', 'EMP000007', 'Mrs. Rukhsana Bibi', '35207-7890123-7', '03001234567', 'Domestic Staff', 'Housekeeper', 28000, 'Morning', 8, 1.25, 5],
-    ['DRV-001', 'EMP000008', 'Mr. Javed Akhtar', '35208-8901234-8', '03001234568', 'Transport', 'Bus Driver', 40000, 'Morning', 8, 1.5, 9],
-    ['T-004', 'EMP000009', 'Ms. Areeba Shahid', '35209-9012345-9', '03001234569', 'Teaching Staff', 'Teacher', 55000, 'Morning', 8, 1.5, 7]
+    ['T-001', 'EMP000001', 'Dr. Naveed Iqbal', '35201-1234567-1', '03001234561', 'Teachers', 'Senior Teacher', 85000, 'Morning', 8, 1.5, 12],
+    ['T-002', 'EMP000002', 'Ms. Saira Tariq', '35202-2345678-2', '03001234562', 'Teachers', 'Teacher', 65000, 'Morning', 8, 1.5, 10],
+    ['T-003', 'EMP000003', 'Mr. Fahad Jamil', '35203-3456789-3', '03001234563', 'Teachers', 'Teacher', 60000, 'Morning', 8, 1.5, 8],
+    ['ADM-001', 'EMP000004', 'Mrs. Shazia Raza', '35204-4567890-4', '03001234564', 'Admin and Support', 'Admin Officer', 70000, 'Morning', 8, 1.5, 14],
+    ['SS-001', 'EMP000005', 'Mr. Imran Yousaf', '35205-5678901-5', '03001234565', 'Support Staff', 'Support Staff', 35000, 'Evening', 8, 1.25, 6],
+    ['SS-002', 'EMP000006', 'Mr. Akram Pervaiz', '35206-6789012-6', '03001234566', 'Support Staff', 'Support Staff', 32000, 'Evening', 8, 1.25, 4],
+    ['HOS-001', 'EMP000007', 'Dr. Ayesha Malik', '35207-7890123-7', '03001234567', 'Head of School', 'Head of School', 150000, 'Morning', 8, 1.25, 20],
+    ['FIN-001', 'EMP000008', 'Mr. Javed Akhtar', '35208-8901234-8', '03001234568', 'Finance', 'Accountant', 60000, 'Morning', 8, 1.5, 9],
+    ['IT-001', 'EMP000009', 'Ms. Areeba Shahid', '35209-9012345-9', '03001234569', 'IT', 'IT Officer', 55000, 'Morning', 8, 1.5, 7]
   ];
   const employeeIds = [];
   for (const e of empDefs) {
