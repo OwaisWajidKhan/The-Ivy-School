@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS students (
   student_id TEXT NOT NULL UNIQUE,
   admission_number TEXT NOT NULL UNIQUE,
   rfid_uid TEXT UNIQUE,
+  rfid_uid_2 TEXT UNIQUE,
   full_name TEXT NOT NULL,
   father_name TEXT,
   class_id INTEGER REFERENCES classes(id),
@@ -399,6 +400,7 @@ const MIGRATIONS = [
   { table: 'payroll', column: 'approved_at', ddl: 'TEXT' },
   { table: 'students', column: 'family_id', ddl: 'TEXT' },
   { table: 'students', column: 'email', ddl: 'TEXT' },
+  { table: 'students', column: 'rfid_uid_2', ddl: 'TEXT' },
   { table: 'employees', column: 'designation_id', ddl: 'INTEGER REFERENCES designations(id)' },
   { table: 'attendance_logs', column: 'gate_pass_id', ddl: 'INTEGER REFERENCES gate_passes(id)' }
 ];
