@@ -29,7 +29,7 @@ export default function Employees() {
     setParams({ q: query || undefined, department_id: deptId || undefined, limit: 10000 });
   }, [query, deptId]);
 
-  const { paginated, page, setPage, pageCount, total } = useClientPagination(data?.items);
+  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(data?.items);
 
   const openAdd = () => { setForm(empty); setEditingId(null); setError(''); setPhotoFile(null); setOpen(true); };
   const openEdit = (e) => {
@@ -122,7 +122,7 @@ export default function Employees() {
               ))}
             </tbody>
           </table>
-          <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
+          <Pagination page={page} pageCount={pageCount} pageSize={pageSize} onPageSizeChange={setPageSize} total={total} onChange={setPage} />
           </>
         )}
       </div>

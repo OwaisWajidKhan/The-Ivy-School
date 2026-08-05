@@ -13,7 +13,7 @@ export default function Cards() {
   const { data: dash, loading: dashLoading, reload: reloadDash } = useFetch('/cards/dashboard');
   const [params, setParams] = useState({ limit: 10000 });
   const { data, loading, reload } = useFetch('/cards', [params], { params });
-  const { paginated, page, setPage, pageCount, total } = useClientPagination(data?.items);
+  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(data?.items);
   const { data: people } = useFetch('/cards/pool', [], {});
   const [assignOpen, setAssignOpen] = useState(false);
   const [form, setForm] = useState({ person_type: 'student', person_id: '', uid: '' });
@@ -156,7 +156,7 @@ export default function Cards() {
               ))}
               </tbody>
             </table>
-            <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
+            <Pagination page={page} pageCount={pageCount} pageSize={pageSize} onPageSizeChange={setPageSize} total={total} onChange={setPage} />
           </div>
         )}
       </div>

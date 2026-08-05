@@ -25,7 +25,7 @@ function MyAttendanceInner({ user }) {
   const rows = data?.rows || [];
   const present = rows.filter(r => r.status !== 'absent' && r.in_time).length || 0;
   const totalHours = rows.reduce((a, r) => a + (r.working_hours || 0), 0) || 0;
-  const { paginated, page, setPage, pageCount, total } = useClientPagination(rows);
+  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(rows);
 
   return (
     <div className="animate-slide-up space-y-4">
@@ -78,7 +78,7 @@ function MyAttendanceInner({ user }) {
                 ))}
               </tbody>
             </table>
-            <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
+            <Pagination page={page} pageCount={pageCount} pageSize={pageSize} onPageSizeChange={setPageSize} total={total} onChange={setPage} />
           </>
         )}
       </div>

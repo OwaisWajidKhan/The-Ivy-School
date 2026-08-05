@@ -30,7 +30,7 @@ export default function ScanLogs() {
   const toast = useToast();
   const [params, setParams] = useState({ date: todayStr(), limit: 10000 });
   const { data, loading } = useFetch('/attendance/logs', [params], { params });
-  const { paginated, page, setPage, pageCount, total } = useClientPagination(data?.items);
+  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(data?.items);
   const doExport = async () => {
     const q = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => { if (v) q.set(k, v); });
@@ -79,7 +79,7 @@ export default function ScanLogs() {
               ))}
             </tbody>
           </table>
-          <Pagination page={page} pageCount={pageCount} pageSize={10} total={total} onChange={setPage} />
+          <Pagination page={page} pageCount={pageCount} pageSize={pageSize} onPageSizeChange={setPageSize} total={total} onChange={setPage} />
           </>
         )}
       </div>
