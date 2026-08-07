@@ -9,10 +9,12 @@ import Attendance from './pages/Attendance';
 import ScanLogs from './pages/ScanLogs';
 import Reports from './pages/Reports';
 import Users from './pages/Users';
+import Access from './pages/Access';
 import Settings from './pages/Settings';
 import Cards from './pages/Cards';
 import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
+import ScannerKiosk from './pages/ScannerKiosk';
 import Spinner from './components/Spinner';
 
 function FullPageLoader() {
@@ -39,17 +41,26 @@ function Guard({ can, children }) {
   return children;
 }
 
+function Home() {
+  const { user } = useAuth();
+  const p = new Set(user?.permissions || []);
+  const kioskOnly = p.has('kiosk_scan') && !p.has('manage_attendance') && !p.has('view_attendance');
+  if (kioskOnly) return <Navigate to="/scanner" replace />;
+  return <Dashboard />;
+}
+
 function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/scanner" element={<Protected><Guard can={['manage_attendance', 'view_attendance', 'kiosk_scan']}><ScannerKiosk /></Guard></Protected>} />
       <Route
         path="/*"
         element={
           <Protected>
             <Layout>
               <Routes>
-                <Route path="/" element={<Dashboard />} />
+                <Route path="/" element={<Home />} />
                 <Route path="/students" element={<Guard can={['manage_students', 'view_students']}><Students /></Guard>} />
                 <Route path="/employees" element={<Guard can={['manage_employees', 'view_employees']}><Employees /></Guard>} />
                 <Route path="/attendance" element={<Guard can={['manage_attendance', 'view_attendance']}><Attendance /></Guard>} />
@@ -57,6 +68,7 @@ function AppRoutes() {
                 <Route path="/cards" element={<Guard can={['manage_devices', 'manage_attendance']}><Cards /></Guard>} />
                 <Route path="/reports" element={<Guard can={['view_reports']}><Reports /></Guard>} />
                 <Route path="/users" element={<Guard can={['manage_settings']}><Users /></Guard>} />
+                <Route path="/access" element={<Guard can={['manage_settings']}><Access /></Guard>} />
                 <Route path="/settings" element={<Guard can={['manage_settings']}><Settings /></Guard>} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="*" element={<NotFound />} />

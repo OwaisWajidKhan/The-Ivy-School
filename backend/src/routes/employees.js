@@ -26,9 +26,9 @@ router.get('/', requireAnyPermission('manage_employees', 'view_employees'), asyn
   const where = [];
   const params = [];
   if (req.query.q) {
-    where.push('(e.full_name LIKE ? OR e.employee_id LIKE ? OR e.cnic LIKE ? OR e.rfid_uid LIKE ? OR e.mobile LIKE ?)');
+    where.push('(e.full_name LIKE ? OR e.employee_id LIKE ? OR e.cnic LIKE ? OR e.rfid_uid LIKE ? OR e.rfid_uid_2 LIKE ? OR e.mobile LIKE ?)');
     const q = `%${req.query.q}%`;
-    params.push(q, q, q, q, q);
+    params.push(q, q, q, q, q, q);
   }
   if (req.query.department_id) { where.push('e.department_id = ?'); params.push(req.query.department_id); }
   if (req.query.designation) { where.push('e.designation LIKE ?'); params.push(`%${req.query.designation}%`); }
@@ -56,20 +56,22 @@ router.post('/', upload.single('photo'), requirePermission('manage_employees'), 
     ? await storage.uploadBuffer({ buffer: req.file.buffer, folder: 'photos', originalname: req.file.originalname, mimetype: req.file.mimetype })
     : b.photo || null;
   const insert = await db.prepare(`
-    INSERT INTO employees (employee_id, rfid_uid, full_name, cnic, mobile, department_id, designation, joining_date, salary, shift_id, working_hours, overtime_rate, leave_balance, status, photo)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    INSERT INTO employees (employee_id, rfid_uid, rfid_uid_2, full_name, cnic, mobile, department_id, designation, joining_date, salary, shift_id, working_hours, overtime_rate, leave_balance, status, photo)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `);
   try {
     const info = await insert.run(
-      employeeId, b.rfid_uid || null, b.full_name, b.cnic || null, b.mobile || null,
+      employeeId, b.rfid_uid || null, b.rfid_uid_2 || null, b.full_name, b.cnic || null, b.mobile || null,
       b.department_id || null, b.designation || null, b.joining_date || null,
       parseFloat(b.salary) || 0, b.shift_id || null,
       parseFloat(b.working_hours) || 8, parseFloat(b.overtime_rate) || 1.5,
       parseFloat(b.leave_balance) || 0, b.status || 'active', photo
     );
-    if (b.rfid_uid) {
-      await db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
-        .run(b.rfid_uid, 'employee', info.lastInsertRowid, new Date().toISOString(), 'active');
+    for (const uid of [b.rfid_uid, b.rfid_uid_2]) {
+      if (uid) {
+        await db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
+          .run(uid, 'employee', info.lastInsertRowid, new Date().toISOString(), 'active');
+      }
     }
     audit(req.user, 'create_employee', 'employee', info.lastInsertRowid, { name: b.full_name }, req.ip);
     ok(res, await db.prepare(`${selectBase} WHERE e.id = ?`).get(info.lastInsertRowid), 201);
@@ -88,11 +90,12 @@ router.put('/:id', upload.single('photo'), requirePermission('manage_employees')
     : (b.photo !== undefined ? b.photo : existing.photo);
   if (req.file && existing.photo) await storage.deleteUpload(existing.photo);
   await db.prepare(`
-    UPDATE employees SET employee_id=?, rfid_uid=?, full_name=?, cnic=?, mobile=?, department_id=?, designation=?,
+    UPDATE employees SET employee_id=?, rfid_uid=?, rfid_uid_2=?, full_name=?, cnic=?, mobile=?, department_id=?, designation=?,
       joining_date=?, salary=?, shift_id=?, working_hours=?, overtime_rate=?, leave_balance=?, status=?, photo=?
     WHERE id=?
   `).run(
     b.employee_id || existing.employee_id, b.rfid_uid !== undefined ? b.rfid_uid : existing.rfid_uid,
+    b.rfid_uid_2 !== undefined ? b.rfid_uid_2 : existing.rfid_uid_2,
     b.full_name || existing.full_name, b.cnic !== undefined ? b.cnic : existing.cnic,
     b.mobile !== undefined ? b.mobile : existing.mobile,
     b.department_id !== undefined ? b.department_id : existing.department_id,
@@ -106,9 +109,11 @@ router.put('/:id', upload.single('photo'), requirePermission('manage_employees')
     b.status || existing.status, photo,
     existing.id
   );
-  if (b.rfid_uid && b.rfid_uid !== existing.rfid_uid) {
-    await db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
-      .run(b.rfid_uid, 'employee', existing.id, new Date().toISOString(), 'active');
+  for (const uid of [b.rfid_uid, b.rfid_uid_2]) {
+    if (uid) {
+      await db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
+        .run(uid, 'employee', existing.id, new Date().toISOString(), 'active');
+    }
   }
   audit(req.user, 'update_employee', 'employee', existing.id, { name: b.full_name }, req.ip);
   ok(res, await db.prepare(`${selectBase} WHERE e.id = ?`).get(existing.id));

@@ -125,6 +125,7 @@ export default function Layout({ children }) {
       label: 'Operations',
       items: [
         { to: '/attendance', label: 'Attendance', icon: ICONS.attendance, show: hasPermission('manage_attendance') || hasPermission('view_attendance') },
+        { to: '/scanner', label: 'RFID Kiosk', icon: ICONS.scan, show: hasPermission('manage_attendance') || hasPermission('view_attendance') || hasPermission('kiosk_scan') },
         { to: '/scans', label: 'Scan History', icon: ICONS.scan, show: hasPermission('manage_attendance') || hasPermission('view_attendance') },
         { to: '/reports', label: 'Reports', icon: ICONS.reports, show: hasPermission('view_reports') }
       ]
@@ -133,6 +134,7 @@ export default function Layout({ children }) {
       label: 'Administration',
       items: [
         { to: '/cards', label: 'RFID Cards', icon: ICONS.cards, show: hasPermission('manage_devices') || hasPermission('manage_attendance') },
+        { to: '/access', label: 'Roles & Permissions', icon: ICONS.users, show: hasPermission('manage_settings') },
         { to: '/users', label: 'Users & Admins', icon: ICONS.users, show: hasPermission('manage_settings') || hasPermission('create_admins') },
         { to: '/settings', label: 'Settings', icon: ICONS.settings, show: hasPermission('manage_settings') }
       ]

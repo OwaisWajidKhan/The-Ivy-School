@@ -10,13 +10,13 @@ import { useToast } from '../context/ToastContext';
 export default function Users() {
   const toast = useToast();
   const { data, loading, reload } = useFetch('/admin/users', [], { params: { limit: 10000 } });
+  const { data: roles } = useFetch('/access/roles');
   const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(data?.items);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ username: '', email: '', password: '', role: 'admin', person_type: 'admin', person_id: '', status: 'active' });
+  const [form, setForm] = useState({ username: '', email: '', password: '', role: '', person_type: 'admin', person_id: '', status: 'active' });
   const [avatarFile, setAvatarFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const roles = ['admin', 'finance'];
 
   const submit = async (e) => {
     e.preventDefault();
@@ -38,7 +38,7 @@ export default function Users() {
           <h2 className="text-xl font-bold">Users & Admins</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">{data?.total || 0} user accounts</p>
         </div>
-        <button className="btn-primary" onClick={() => { setForm({ username: '', email: '', password: '', role: 'admin', person_type: 'admin', person_id: '', status: 'active' }); setAvatarFile(null); setOpen(true); }}>+ Create User</button>
+        <button className="btn-primary" onClick={() => { setForm({ username: '', email: '', password: '', role: roles?.[0]?.name || '', person_type: 'admin', person_id: '', status: 'active' }); setAvatarFile(null); setOpen(true); }}>+ Create User</button>
       </div>
 
       <div className="card overflow-x-auto">
@@ -53,7 +53,7 @@ export default function Users() {
                 <tr key={u.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40">
                   <td className="td font-medium">{u.username}</td>
                   <td className="td text-xs">{u.email || '—'}</td>
-                  <td className="td"><Badge status={u.role_name === 'admin' ? 'active' : u.role_name === 'finance' ? 'present' : 'pending'} /></td>
+                  <td className="td capitalize">{u.role_name.replace(/_/g, ' ')}</td>
                   <td className="td text-xs capitalize">{u.person_type} {u.linked_name ? `· ${u.linked_name}` : ''}</td>
                   <td className="td text-xs">{u.last_login_at || '—'}</td>
                   <td className="td"><Badge status={u.status} /></td>
@@ -84,7 +84,7 @@ export default function Users() {
             <div>
               <label className="label">Role</label>
               <select className="input" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-                {roles.map(r => <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>)}
+                {(roles || []).map(r => <option key={r.id} value={r.name}>{r.name.replace(/_/g, ' ')}</option>)}
               </select>
             </div>
             <div>

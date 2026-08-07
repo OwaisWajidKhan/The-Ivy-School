@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS employees (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   employee_id TEXT NOT NULL UNIQUE,
   rfid_uid TEXT UNIQUE,
+  rfid_uid_2 TEXT UNIQUE,
   full_name TEXT NOT NULL,
   cnic TEXT,
   mobile TEXT,
@@ -402,6 +403,7 @@ const MIGRATIONS = [
   { table: 'students', column: 'email', ddl: 'TEXT' },
   { table: 'students', column: 'rfid_uid_2', ddl: 'TEXT' },
   { table: 'employees', column: 'designation_id', ddl: 'INTEGER REFERENCES designations(id)' },
+  { table: 'employees', column: 'rfid_uid_2', ddl: 'TEXT' },
   { table: 'attendance_logs', column: 'gate_pass_id', ddl: 'INTEGER REFERENCES gate_passes(id)' }
 ];
 
