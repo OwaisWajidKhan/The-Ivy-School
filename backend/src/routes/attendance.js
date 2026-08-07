@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db, getSetting } = require('../db/schema');
-const { requireAuth, requirePermission } = require('../middleware/auth');
+const { requireAuth, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { ok, fail, audit, paginate, todayStr, nowStr, toExcel } = require('../utils/helpers');
 const { toDbString } = require('../utils/timezone');
 const { processScan, lookupPerson } = require('../services/attendanceEngine');
@@ -13,8 +13,8 @@ const personNameJoin = (personType) =>
     ? `LEFT JOIN students st ON st.id = a.person_id`
     : `LEFT JOIN employees em ON em.id = a.person_id`;
 
-// RFID scan endpoint (also callable by RFID devices with token)
-router.post('/scan', async (req, res) => {
+// RFID scan endpoint (also callable by RFID devices with a user token)
+router.post('/scan', requireAnyPermission('manage_attendance', 'view_attendance', 'kiosk_scan'), async (req, res) => {
   const { uid, device_id, device_name, location, timestamp } = req.body;
   if (!uid) return fail(res, 'RFID UID is required');
   const result = await processScan({

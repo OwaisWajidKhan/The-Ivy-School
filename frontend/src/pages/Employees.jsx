@@ -7,7 +7,7 @@ import Pagination, { useClientPagination } from '../components/Pagination';
 import { useToast } from '../context/ToastContext';
 
 const empty = {
-  full_name: '', mobile: '', department_id: '', status: 'active'
+  full_name: '', mobile: '', rfid_uid: '', rfid_uid_2: '', department_id: '', status: 'active'
 };
 
 export default function Employees() {
@@ -34,7 +34,8 @@ export default function Employees() {
   const openAdd = () => { setForm(empty); setEditingId(null); setError(''); setPhotoFile(null); setOpen(true); };
   const openEdit = (e) => {
     setForm({
-      full_name: e.full_name, mobile: e.mobile || '', department_id: e.department_id || '', status: e.status
+      full_name: e.full_name, mobile: e.mobile || '', rfid_uid: e.rfid_uid || '', rfid_uid_2: e.rfid_uid_2 || '',
+      department_id: e.department_id || '', status: e.status
     });
     setEditingId(e.id);
     setError('');
@@ -79,7 +80,7 @@ export default function Employees() {
 
       <div className="card p-4">
         <div className="grid gap-3 sm:grid-cols-3">
-          <input className="input" placeholder="Search name, number…" value={query} onChange={e => setQuery(e.target.value)} />
+          <input className="input" placeholder="Search name, number, RFID…" value={query} onChange={e => setQuery(e.target.value)} />
           <select className="input" value={deptId} onChange={e => setDeptId(e.target.value)}>
             <option value="">All departments</option>
             {departments?.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -96,6 +97,7 @@ export default function Employees() {
                 <th className="th">Employee</th>
                 <th className="th">Number</th>
                 <th className="th">Department</th>
+                <th className="th">RFID Cards</th>
                 <th className="th text-right">Actions</th>
               </tr>
             </thead>
@@ -114,6 +116,10 @@ export default function Employees() {
                   </td>
                   <td className="td font-mono text-xs">{e.mobile || '—'}</td>
                   <td className="td">{e.department || '—'}</td>
+                  <td className="td font-mono text-xs">
+                    <p>{e.rfid_uid || '—'}</p>
+                    {e.rfid_uid_2 && <p className="text-slate-400">{e.rfid_uid_2}</p>}
+                  </td>
                   <td className="td text-right">
                     <button className="btn-secondary !px-2.5 !py-1 text-xs" onClick={() => openEdit(e)}>Edit</button>
                     <button className="btn-danger ml-1.5 !px-2.5 !py-1 text-xs" onClick={() => setDeleting(e)}>Delete</button>
@@ -145,6 +151,8 @@ export default function Employees() {
               {departments?.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </div>
+          <div><label className="label">RFID Card 1</label><input className="input font-mono" value={form.rfid_uid} onChange={e => setForm({ ...form, rfid_uid: e.target.value })} placeholder="Card 1 UID" /></div>
+          <div><label className="label">RFID Card 2</label><input className="input font-mono" value={form.rfid_uid_2} onChange={e => setForm({ ...form, rfid_uid_2: e.target.value })} placeholder="Card 2 UID (optional)" /></div>
           <div>
             <label className="label">Picture</label>
             <input className="input" type="file" accept="image/*" onChange={e => setPhotoFile(e.target.files[0])} />

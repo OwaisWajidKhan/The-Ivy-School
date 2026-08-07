@@ -84,7 +84,8 @@ const routes = {
   '/api/notifications': require('./routes/notifications'),
   '/api/admin': require('./routes/admin'),
   '/api/reference': require('./routes/reference'),
-  '/api/cards': require('./routes/cards')
+  '/api/cards': require('./routes/cards'),
+  '/api/access': require('./routes/access')
 };
 
 // Fail loudly when a serverless deployment has no serverless DB: Vercel's
