@@ -27,48 +27,119 @@ async function getStartEnd(personType, personId) {
   };
 }
 
-async function lookupPerson(uid) {
-  const card = await db.prepare(
-    `SELECT c.uid, c.card_type, c.person_id, c.status AS card_status
-     FROM rfid_cards c WHERE c.uid = ?`
-  ).get(uid);
-  if (!card) return { found: false, reason: 'UNKNOWN_CARD' };
-  if (card.card_status !== 'active') return { found: false, reason: 'CARD_INACTIVE', card };
+// Load an active person by their database id (chip id stays numeric; scan uses
+// the same row). Returns undefined when the person does not exist.
+async function loadPerson(personType, personId) {
+  if (personType === 'student') {
+    return db.prepare(
+      `SELECT id, full_name, status, class_id, section_id, photo, student_id
+       FROM students WHERE id = ?`
+    ).get(personId);
+  }
+  return db.prepare(
+    `SELECT id, full_name, status, photo, employee_id FROM employees WHERE id = ?`
+  ).get(personId);
+}
 
-  if (card.card_type === 'student') {
-    const student = await db.prepare(
-      `SELECT s.id, s.full_name, s.status, s.class_id, s.section_id, s.photo, s.student_id
-       FROM students s WHERE s.id = ?`
-    ).get(card.person_id);
-    if (!student) return { found: false, reason: 'PERSON_NOT_FOUND' };
-    if (student.status !== 'active') return { found: false, reason: 'PERSON_INACTIVE' };
+// Resolve a UID straight from the person records (students/employees
+// rfid_uid + rfid_uid_2). This is the source the card UI keeps in sync, so it
+// catches valid cards whose rfid_cards mapping is missing or points at a ghost.
+async function lookupByPersonRecord(uid) {
+  const student = await db.prepare(
+    `SELECT id, full_name, status, class_id, section_id, photo, student_id
+     FROM students WHERE rfid_uid = ? OR rfid_uid_2 = ?`
+  ).get(uid, uid);
+  if (student) {
     return {
-      found: true,
+      found: student.status === 'active',
       personType: 'student',
       personId: student.id,
       name: student.full_name,
       code: student.student_id,
       photo: student.photo,
-      card: card,
-      person: student
+      person: student,
+      inactive: student.status !== 'active'
     };
   }
-
   const emp = await db.prepare(
-    `SELECT e.id, e.full_name, e.status, e.photo, e.employee_id FROM employees e WHERE e.id = ?`
-  ).get(card.person_id);
-  if (!emp) return { found: false, reason: 'PERSON_NOT_FOUND' };
-  if (emp.status !== 'active') return { found: false, reason: 'PERSON_INACTIVE' };
-  return {
-    found: true,
-    personType: 'employee',
-    personId: emp.id,
-    name: emp.full_name,
-    code: emp.employee_id,
-    photo: emp.photo,
-    card: card,
-    person: emp
-  };
+    `SELECT id, full_name, status, photo, employee_id
+     FROM employees WHERE rfid_uid = ? OR rfid_uid_2 = ?`
+  ).get(uid, uid);
+  if (emp) {
+    return {
+      found: emp.status === 'active',
+      personType: 'employee',
+      personId: emp.id,
+      name: emp.full_name,
+      code: emp.employee_id,
+      photo: emp.photo,
+      person: emp,
+      inactive: emp.status !== 'active'
+    };
+  }
+  return null;
+}
+
+// Self-heal the rfid_cards mapping once we know the real owner, so future
+// scans hit the card row directly. Creates the row when missing, repoints it
+// when it pointed at a ghost person.
+async function healCard(uid, personType, personId, existingCard) {
+  try {
+    if (existingCard) {
+      await db.prepare(
+        'UPDATE rfid_cards SET card_type = ?, person_id = ?, status = ? WHERE id = ?'
+      ).run(personType, personId, existingCard.card_status === 'active' ? 'active' : existingCard.card_status, existingCard.id);
+    } else {
+      await db.prepare(
+        "INSERT INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,datetime('now'),'active')"
+      ).run(uid, personType, personId);
+    }
+  } catch (e) {
+    // heal is best-effort; never fail a valid scan because of it
+  }
+}
+
+async function lookupPerson(uid) {
+  const card = await db.prepare(
+    `SELECT c.id, c.uid, c.card_type, c.person_id, c.status AS card_status
+     FROM rfid_cards c WHERE c.uid = ?`
+  ).get(uid);
+
+  // 1) Card row exists and the person it points at exists and is active.
+  if (card) {
+    if (card.card_status === 'active') {
+      const person = await loadPerson(card.card_type, card.person_id);
+      if (person && person.status === 'active') {
+        return {
+          found: true,
+          personType: card.card_type,
+          personId: person.id,
+          name: person.full_name,
+          code: card.card_type === 'student' ? person.student_id : person.employee_id,
+          photo: person.photo,
+          card,
+          person
+        };
+      }
+      if (person && person.status !== 'active') return { found: false, reason: 'PERSON_INACTIVE', card };
+    } else {
+      // Explicitly blocked/lost/revoked card: honor the block absolutely.
+      // A re-issued card has a new UID (the assign flow updates the person
+      // record), so an old UID never leaks back in through the fallback.
+      return { found: false, reason: 'CARD_INACTIVE', card };
+    }
+  }
+
+  // 2) Card row missing or points at a ghost person -> fall back to the
+  //    person record, which the card UI keeps in sync, and re-pair the card.
+  const byRecord = await lookupByPersonRecord(uid);
+  if (byRecord && byRecord.found) {
+    await healCard(uid, byRecord.personType, byRecord.personId, card);
+    return { ...byRecord, card: card || null };
+  }
+  if (byRecord && byRecord.inactive) return { found: false, reason: 'PERSON_INACTIVE' };
+  if (card) return { found: false, reason: 'PERSON_NOT_FOUND', card };
+  return { found: false, reason: 'UNKNOWN_CARD' };
 }
 
 async function closeSummary(summary, outTime, timing) {

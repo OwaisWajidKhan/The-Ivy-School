@@ -11,6 +11,7 @@
     "sync:prod": "node scripts/sync-prod-to-local.js",
     "import:sheet": "node scripts/import-sheet.js",
     "sync:to-prod": "node scripts/sync-local-to-prod.js",
+    "reload:prod": "node scripts/reload-from-prod.js",
     "build:frontend": "cd .. && npm.cmd --prefix frontend run build",
     "bundle": "bun build src/index.js --compile --define \"process.env.IVY_PACKAGED='1'\" --outfile build/TheIvySchool.exe",
     "package": "node scripts/package.js",
