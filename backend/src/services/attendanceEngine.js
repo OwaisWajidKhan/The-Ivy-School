@@ -1,5 +1,6 @@
 const { db, getSetting } = require('../db/schema');
 const { todayStr, nowStr, minutesBetween, hhmmToMinutes } = require('../utils/helpers');
+const { sendAttendanceSms } = require('./smsService');
 
 async function getStartEnd(personType, personId) {
   // employees use their shift; students use school timings
@@ -222,6 +223,10 @@ async function processScan({ uid, deviceId = null, deviceName = null, location =
       'INSERT INTO attendance_logs (person_type, person_id, device_id, location, direction, scan_time, date, raw_uid) VALUES (?,?,?,?,?,?,?,?)'
     ).run(person.personType, person.personId, deviceId, location, 'IN', scanTime, date, uid);
     await notifyAttendance(person, 'IN', inTime);
+    sendAttendanceSms({
+      personType: person.personType, personId: person.personId, name: person.name,
+      date, checkIn: inTime, checkOut: null
+    }).catch(() => {});
     return { ok: true, direction: 'IN', summary, person: { name: person.name, type: person.personType, id: person.personId, code: person.code, photo: person.photo }, message: `IN recorded for ${person.name}` };
   }
 
@@ -231,6 +236,10 @@ async function processScan({ uid, deviceId = null, deviceName = null, location =
     'INSERT INTO attendance_logs (person_type, person_id, device_id, location, direction, scan_time, date, raw_uid) VALUES (?,?,?,?,?,?,?,?)'
   ).run(person.personType, person.personId, deviceId, location, 'OUT', scanTime, date, uid);
   await notifyAttendance(person, 'OUT', outTime);
+  sendAttendanceSms({
+    personType: person.personType, personId: person.personId, name: person.name,
+    date, checkIn: summary.in_time, checkOut: outTime
+  }).catch(() => {});
   return { ok: true, direction: 'OUT', summary: updated, person: { name: person.name, type: person.personType, id: person.personId, code: person.code, photo: person.photo }, message: `Checkout updated to ${outTime} for ${person.name}` };
 }
 

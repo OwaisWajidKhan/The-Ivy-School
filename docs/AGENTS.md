@@ -5,6 +5,17 @@
 ## How to use
 This file tracks the current state of the build. Update the "Current status", progress checklists, and "Known issues" sections after each working session. Run commands from the `backend/` or `frontend/` directories as noted.
 
+## ⚠ Production DB is READ-ONLY (never write to it)
+- **NEVER perform any change (INSERT/UPDATE/DELETE/DDL) on the production PostgreSQL database** (`ivy_school` on the VPS).
+- Production is always the **source**; local is the **destination**. Data flows only **prod → local** (clone/sync down). There is **no** local → prod write path (do not run `sync:to-prod` against production, do not push local-only seed data up).
+- To mirror everything from production into the local SQLite DB (fully read-only on prod — it only runs `COPY ... TO STDOUT` SELECTs over SSH):
+  ```powershell
+  # from backend/
+  npm.cmd run clone:prod   # exports all 24 tables from prod (read-only) + imports into backend/data/school.db
+  ```
+  Clones every table except `refresh_tokens` (ephemeral session tokens). It preserves prod ids, so attendance/cards/parents/payroll line up. `--import-only` (or `IVY_SYNC_NO_EXPORT=1`) reuses the last exported CSVs without touching prod again.
+- Read-only prod inspection is fine, e.g. `ssh ... "sudo -u postgres psql -d ivy_school -tAc \"SELECT count(*) FROM students\""` — it never mutates.
+
 ## Environment notes (IMPORTANT)
 - OS: Windows / PowerShell 5.1. PowerShell blocks `npm` script alias -> **always use `npm.cmd`**.
 - Node v24.18.0. `better-sqlite3` fails to compile (no Python/build tools) -> **use Node's built-in `node:sqlite`** (`DatabaseSync`). No native deps allowed.
@@ -183,6 +194,23 @@ D:\The Ivy School\
 - **HTTPS**: certbot `--nginx -d theivyschool.tech -d www.theivyschool.tech`; auto-renew timer active. Pgweb web DB manager exposed at :8443.
 - **Note**: the 96 MB `docs/Masterfile-2025-2026.xlsx` is gitignored but still in git history — optional history purge later.
 
+## Attendance SMS (Branded SMS Pakistan) — added 2026-08-31
+- Sends a plain-text attendance SMS to the guardian (students) / employee (employees) on **both** check-in and check-out RFID scans (wired in `backend/src/services/attendanceEngine.js` → `sendAttendanceSms` fire-and-forget).
+- Message template:
+  ```
+  <NAME>, <DD-MM-YYYY>
+  Check in: <HH:MM AM/PM>
+  Check out: <Pending | HH:MM AM/PM>
+  <school_name>
+  <school_contact_phone>
+  ```
+  On check-in, "Check out" reads `Pending` (check-out unknown); on check-out both times are filled.
+- Implementation: `backend/src/services/smsService.js` (`buildMessage`, `lookupRecipientPhone`, `normalizePkPhone`, `sendSms`). Uses Node global `fetch`; non-blocking (failures are logged, never break a scan).
+- **Receiver lookup**: students → guardian from `parents` table (prefer `father`), falling back to `students.parent_contact` then `students.phone`; employees → `employees.mobile`. `normalizePkPhone` converts to international `923XXXXXXXXX` and **skips** landlines/non-PK numbers (e.g. `+966`, `021...`) so nothing is mis-dialed.
+- **Config** (`backend/src/config.js` → `config.sms`): credentials come **only from env** (never committed): `SMS_ENABLED=true`, `SMS_API_URL` (default `https://app.brandedsmspakistan.com/api/send`), `SMS_EMAIL`, `SMS_KEY`, `SMS_MASK`. SMS is disabled until set. These are set in production `.env` (do not commit secrets).
+- **⚠ `school_contact_phone` setting must be set** (Settings page) for the school-phone line to render. It is currently **`null` in production** (and was null locally; I set it to `021-37450514` in the LOCAL clone only for testing — production was NOT modified). Set it on production via the Settings UI.
+- Note: the SMS provider flow is separate from the in-app `notifications` table; it does not write to production and does not touch prod DB.
+
 ## Seed login credentials
 | Role | Username | Password |
 |------|----------|----------|
@@ -196,6 +224,8 @@ Only these two roles exist: `admin` (full CRUD/settings) and `finance` (read-onl
 # backend
 cd backend && npm.cmd start          # run server (or use detached Start-Process)
 cd backend && npm.cmd run seed       # re-seed DB (deletes old data automatically? -> deletes data dir first manually)
+cd backend && npm.cmd run clone:prod # FULL prod->local mirror (read-only on prod): every table into school.db
+cd backend && npm.cmd run sync:prod   # students/cards/classes only, prod->local (read-only on prod)
 cd backend && npm.cmd run bundle     # compile standalone exe (bun build --compile)
 cd backend && npm.cmd run package    # build release folder + portable zip (needs 7-Zip at C:\Program Files\7-Zip)
 cd backend && npm.cmd run dist       # build frontend + bundle + package in one step

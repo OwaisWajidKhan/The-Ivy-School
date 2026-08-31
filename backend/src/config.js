@@ -39,6 +39,16 @@ module.exports = {
     user: process.env.SMTP_USER || '',
     pass: process.env.SMTP_PASS || ''
   },
+  sms: {
+    // Attendance SMS (Branded SMS Pakistan / app.brandedsmspakistan.com).
+    // Credentials come ONLY from env (never baked into source). When unset,
+    // SMS is disabled. Set SMS_EMAIL/SMS_KEY/SMS_MASK on production .env.
+    enabled: process.env.SMS_ENABLED === 'true',
+    url: process.env.SMS_API_URL || 'https://app.brandedsmspakistan.com/api/send',
+    email: process.env.SMS_EMAIL || '',
+    key: process.env.SMS_KEY || '',
+    mask: process.env.SMS_MASK || ''
+  },
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5000'
 };
 
