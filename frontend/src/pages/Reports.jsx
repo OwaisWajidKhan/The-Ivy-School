@@ -129,10 +129,13 @@ function MonthYearRow({ month, year, setMonth, setYear }) {
 }
 
 function SummaryReport({ data }) {
-  const { data: d, loading } = data;
-  if (loading || !d) return <PageLoader />;
-  if (!d.rows?.length) return <EmptyState title="No attendance summary for this month" />;
-  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(d.rows);
+  const { data: d, loading, error } = data;
+  const rows = Array.isArray(d?.students) ? d.students : [];
+  // Hook must run on every render (before any early return) to keep hook order stable.
+  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(rows);
+  if (loading) return <PageLoader />;
+  if (error) return <EmptyState title="Couldn't load the attendance summary" subtitle={error} />;
+  if (!rows.length) return <EmptyState title="No attendance summary for this month" />;
   return (
     <div className="card overflow-x-auto">
       <table className="w-full min-w-[900px]">
@@ -140,16 +143,20 @@ function SummaryReport({ data }) {
           <tr><th className="th">Student</th><th className="th">Class</th><th className="th">Present</th><th className="th">Absent</th><th className="th">Attendance %</th><th className="th">Status</th></tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-          {paginated.map(r => (
-            <tr key={r.student_id}>
-              <td className="td font-medium">{r.full_name}</td>
-              <td className="td text-xs">{r.class_name} {r.section_name}</td>
-              <td className="td">{r.present}</td>
-              <td className="td text-rose-600 dark:text-rose-400">{r.absent}</td>
-              <td className="td">{r.pct != null ? `${r.pct.toFixed(1)}%` : '—'}</td>
-              <td className="td"><Badge status={r.pct >= 75 ? 'active' : 'inactive'} /></td>
-            </tr>
-          ))}
+          {paginated.map(r => {
+            // Postgres returns ROUND(numeric) as a string; coerce before display/compare.
+            const pct = r.attendance_pct == null ? null : Number(r.attendance_pct);
+            return (
+              <tr key={r.student_id}>
+                <td className="td font-medium">{r.full_name}</td>
+                <td className="td text-xs">{r.class_name} {r.section_name}</td>
+                <td className="td">{r.present}</td>
+                <td className="td text-rose-600 dark:text-rose-400">{r.absent}</td>
+                <td className="td">{pct != null ? `${pct.toFixed(1)}%` : '—'}</td>
+                <td className="td"><Badge status={pct != null && pct >= 75 ? 'active' : 'inactive'} /></td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       <Pagination page={page} pageCount={pageCount} pageSize={pageSize} onPageSizeChange={setPageSize} total={total} onChange={setPage} />
@@ -158,8 +165,10 @@ function SummaryReport({ data }) {
 }
 
 function DailyReport({ data }) {
-  const { data: d, loading } = data;
-  if (loading || !d) return <PageLoader />;
+  const { data: d, loading, error } = data;
+  if (loading) return <PageLoader />;
+  if (error) return <EmptyState title="Couldn't load the daily report" subtitle={error} />;
+  if (!d) return <EmptyState title="No data for this date" />;
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
       <ReportCard title={`Students — ${d.students.length} records`}>
@@ -187,10 +196,13 @@ function DailyReport({ data }) {
 }
 
 function MonthlyReport({ data }) {
-  const { data: d, loading } = data;
-  if (loading || !d) return <PageLoader />;
-  if (d.rows.length === 0) return <EmptyState title="No attendance for this period" />;
-  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(d.rows);
+  const { data: d, loading, error } = data;
+  const rows = Array.isArray(d?.rows) ? d.rows : [];
+  // Hook must run on every render (before any early return) to keep hook order stable.
+  const { paginated, page, setPage, pageCount, total, pageSize, setPageSize } = useClientPagination(rows);
+  if (loading) return <PageLoader />;
+  if (error) return <EmptyState title="Couldn't load the monthly report" subtitle={error} />;
+  if (!rows.length) return <EmptyState title="No attendance for this period" />;
   return (
     <div className="card overflow-x-auto">
       <table className="w-full min-w-[640px]">
