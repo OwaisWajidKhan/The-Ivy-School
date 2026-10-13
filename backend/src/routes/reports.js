@@ -10,6 +10,15 @@ router.use(requireAuth);
 
 // Build a generic summary list for a date range
 async function buildRows({ personType, from, to }) {
+  // Note: dynamic WHERE instead of `(? IS NULL OR col = ?)`. Postgres cannot
+  // infer the type of a parameter that only appears in `IS NULL` (error 42P18),
+  // so conditional predicates are appended only when a filter is present.
+  const args = [from, to];
+  let where = 'WHERE a.date BETWEEN ? AND ?';
+  if (personType) {
+    where += ' AND a.person_type = ?';
+    args.push(personType);
+  }
   return await db.prepare(
     `SELECT a.*,
        CASE WHEN a.person_type='student' THEN st.full_name ELSE em.full_name END AS full_name,
@@ -21,10 +30,9 @@ async function buildRows({ personType, from, to }) {
      LEFT JOIN classes c ON c.id = st.class_id
      LEFT JOIN sections sec ON sec.id = st.section_id
      LEFT JOIN departments d ON d.id = em.department_id
-     WHERE a.date BETWEEN ? AND ?
-       AND (? IS NULL OR a.person_type = ?)
+     ${where}
      ORDER BY a.date, a.person_type, full_name`
-  ).all(from, to, personType || null, personType || null);
+  ).all(...args);
 }
 
 function parseRange(q) {
@@ -64,6 +72,12 @@ router.get('/monthly', requirePermission('view_reports'), async (req, res) => {
   const personType = ['student', 'employee'].includes(req.query.person_type) ? req.query.person_type : null;
   const from = `${year}-${month}-01`;
   const to = `${year}-${month}-31`;
+  const args = [from, to];
+  let where = 'WHERE a.date BETWEEN ? AND ?';
+  if (personType) {
+    where += ' AND a.person_type = ?';
+    args.push(personType);
+  }
 
   const rows = await db.prepare(
     `SELECT
@@ -78,18 +92,19 @@ router.get('/monthly', requirePermission('view_reports'), async (req, res) => {
        SUM(CASE WHEN a.status='absent' THEN 1 ELSE 0 END) AS absent,
        SUM(CASE WHEN a.status='early_exit' THEN 1 ELSE 0 END) AS early_exit,
        SUM(CASE WHEN a.status='overtime' THEN 1 ELSE 0 END) AS overtime,
-       ROUND(SUM(a.working_hours),2) AS total_working_hours,
-       ROUND(SUM(a.overtime_hours),2) AS overtime_hours
+       ROUND(CAST(SUM(a.working_hours) AS NUMERIC),2) AS total_working_hours,
+       ROUND(CAST(SUM(a.overtime_hours) AS NUMERIC),2) AS overtime_hours
      FROM attendance_summary a
      LEFT JOIN students st ON st.id = a.person_id AND a.person_type='student'
      LEFT JOIN employees em ON em.id = a.person_id AND a.person_type='employee'
      LEFT JOIN classes c ON c.id = st.class_id
      LEFT JOIN sections sec ON sec.id = st.section_id
      LEFT JOIN departments d ON d.id = em.department_id
-     WHERE a.date BETWEEN ? AND ? AND (? IS NULL OR a.person_type = ?)
-     GROUP BY a.person_type, a.person_id
+     ${where}
+     GROUP BY a.person_type, a.person_id, st.full_name, st.student_id, c.name, sec.name,
+              em.full_name, em.employee_id, em.designation, d.name
      ORDER BY a.person_type, full_name`
-  ).all(from, to, personType, personType);
+  ).all(...args);
 
   ok(res, { month, year, from, to, rows });
 });
@@ -115,7 +130,7 @@ router.get('/overtime', requirePermission('view_reports'), async (req, res) => {
   const { from, to } = parseRange(req.query);
   const rows = await db.prepare(
     `SELECT em.id, em.full_name, em.employee_id, em.designation,
-       COUNT(a.id) AS overtime_days, ROUND(SUM(a.overtime_hours),2) AS overtime_hours
+       COUNT(a.id) AS overtime_days, ROUND(CAST(SUM(a.overtime_hours) AS NUMERIC),2) AS overtime_hours
      FROM attendance_summary a
      JOIN employees em ON em.id = a.person_id
      WHERE a.person_type='employee' AND a.overtime_hours > 0 AND a.date BETWEEN ? AND ?
@@ -197,22 +212,28 @@ router.get('/export/daily-csv', requirePermission('export_reports'), async (req,
 router.get('/attendance-summary', requirePermission('view_reports'), async (req, res) => {
   const month = String(parseInt(req.query.month) || new Date().getMonth() + 1).padStart(2, '0');
   const year = parseInt(req.query.year) || new Date().getFullYear();
-  const classId = req.query.class_id || null;
+  const classId = req.query.class_id ? parseInt(req.query.class_id, 10) : null;
   const from = `${year}-${month}-01`;
   const to = `${year}-${month}-31`;
 
+  const classArgs = [from, to];
+  let classWhere = '';
+  if (classId) { classWhere = 'WHERE c.id = ?'; classArgs.push(classId); }
   const classRows = await db.prepare(
     `SELECT c.id AS class_id, c.name AS class_name,
-       COUNT(s.id) AS total_students,
+       COUNT(DISTINCT s.id) AS total_students,
        ROUND(100.0 * SUM(CASE WHEN a.status IN ('present','late','half_day') THEN 1 ELSE 0 END) / NULLIF(COUNT(DISTINCT a.date) * COUNT(DISTINCT s.id), 0), 1) AS attendance_pct
      FROM classes c
      LEFT JOIN students s ON s.class_id = c.id AND s.status='active'
      LEFT JOIN attendance_summary a ON a.person_type='student' AND a.person_id = s.id AND a.date BETWEEN ? AND ?
-     WHERE (? IS NULL OR c.id = ?)
+     ${classWhere}
      GROUP BY c.id, c.name
      ORDER BY c.name`
-  ).all(from, to, classId, classId);
+  ).all(...classArgs);
 
+  const studentArgs = [from, to];
+  let studentWhere = "WHERE s.status='active'";
+  if (classId) { studentWhere += ' AND s.class_id = ?'; studentArgs.push(classId); }
   const studentRows = await db.prepare(
     `SELECT s.id AS student_id, s.full_name, s.student_id, c.name AS class_name, sec.name AS section_name,
        COUNT(DISTINCT a.date) AS present_days,
@@ -225,10 +246,10 @@ router.get('/attendance-summary', requirePermission('view_reports'), async (req,
      LEFT JOIN attendance_summary a ON a.person_type='student' AND a.person_id = s.id AND a.date BETWEEN ? AND ?
      LEFT JOIN classes c ON c.id = s.class_id
      LEFT JOIN sections sec ON sec.id = s.section_id
-     WHERE s.status='active' AND (? IS NULL OR s.class_id = ?)
+     ${studentWhere}
      GROUP BY s.id, s.full_name, s.student_id, c.name, sec.name
      ORDER BY c.name, s.full_name`
-  ).all(from, to, classId, classId);
+  ).all(...studentArgs);
 
   ok(res, { month, year, from, to, classes: classRows, students: studentRows });
 });
