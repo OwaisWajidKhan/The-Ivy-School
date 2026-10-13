@@ -5,6 +5,7 @@ const { db } = require('../db/schema');
 const { requireAuth, requirePermission, requireAnyPermission } = require('../middleware/auth');
 const { ok, fail, audit, paginate, todayStr } = require('../utils/helpers');
 const storage = require('../services/storageService');
+const { findRfidOwner, ownerLabel, syncCardForPerson } = require('../utils/rfid');
 
 const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 const upload = multer({
@@ -105,15 +106,17 @@ router.post('/import', requirePermission('manage_students'), csvUpload.single('f
         }
       }
     }
+    const uid = get(cUid);
+    if (uid) {
+      const owner = await findRfidOwner(uid);
+      if (owner) { results.errors.push(`Row ${i + 1}: RFID UID ${uid} already assigned to ${ownerLabel(owner)}`); results.skipped++; continue; }
+    }
     try {
       const info = await db.prepare(
         'INSERT INTO students (student_id, admission_number, rfid_uid, full_name, father_name, class_id, section_id, gender, phone, parent_contact, status) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
-      ).run(studentId, `ADM-${String(Date.now()).slice(-7)}-${i}`, get(cUid) || null, fullName, get(cFather) || null,
+      ).run(studentId, `ADM-${String(Date.now()).slice(-7)}-${i}`, uid || null, fullName, get(cFather) || null,
         classId, sectionId, get(cGender) || null, get(cPhone) || null, get(cParent) || null, 'active');
-      if (get(cUid)) {
-        await db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
-          .run(get(cUid), 'student', info.lastInsertRowid, new Date().toISOString(), 'active');
-      }
+      await syncCardForPerson(uid, 'student', info.lastInsertRowid);
       results.imported++;
     } catch (e) {
       results.errors.push(`Row ${i + 1}: ${e.message}`);
@@ -189,6 +192,14 @@ router.post('/', upload.single('photo'), requirePermission('manage_students'), a
   if (!b.full_name) return fail(res, 'Full name is required');
   const studentId = b.student_id || `S-${Date.now().toString().slice(-6)}`;
   const admissionNumber = b.admission_number || `ADM-${Date.now().toString().slice(-7)}`;
+
+  // Reject any RFID UID already held by another person (student or employee),
+  // whether it lives in a person record or only in the rfid_cards index.
+  for (const uid of [b.rfid_uid, b.rfid_uid_2]) {
+    const owner = await findRfidOwner(uid);
+    if (owner) return fail(res, `RFID UID ${uid} is already assigned to ${ownerLabel(owner)}`);
+  }
+
   const photo = req.file
     ? await storage.uploadBuffer({ buffer: req.file.buffer, folder: 'photos', originalname: req.file.originalname, mimetype: req.file.mimetype })
     : b.photo || null;
@@ -197,26 +208,15 @@ router.post('/', upload.single('photo'), requirePermission('manage_students'), a
     INSERT INTO students (student_id, admission_number, rfid_uid, rfid_uid_2, full_name, father_name, class_id, section_id, roll_number, dob, gender, phone, parent_contact, address, status, photo)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `);
-  const registerCard = (uid, personId) => {
-    if (uid) {
-      return db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
-        .run(String(uid), 'student', personId, new Date().toISOString(), 'active');
-    }
-    return Promise.resolve();
-  };
-  const cardOwner = async (uid) => db.prepare('SELECT id FROM students WHERE rfid_uid = ? OR rfid_uid_2 = ?').get(String(uid), String(uid));
   try {
-    for (const uid of [b.rfid_uid, b.rfid_uid_2]) {
-      if (uid && await cardOwner(uid)) return fail(res, 'Duplicate record (RFID card already assigned to another student)');
-    }
     const info = await insert.run(
       studentId, admissionNumber, b.rfid_uid || null, b.rfid_uid_2 || null, b.full_name, b.father_name || null,
       b.class_id || null, b.section_id || null, b.roll_number || null, b.dob || null,
       b.gender || null, b.phone || null, b.parent_contact || null, b.address || null,
       b.status || 'active', photo
     );
-    await registerCard(b.rfid_uid, info.lastInsertRowid);
-    await registerCard(b.rfid_uid_2, info.lastInsertRowid);
+    await syncCardForPerson(b.rfid_uid, 'student', info.lastInsertRowid);
+    await syncCardForPerson(b.rfid_uid_2, 'student', info.lastInsertRowid);
     audit(req.user, 'create_student', 'student', info.lastInsertRowid, { name: b.full_name }, req.ip);
     const created = await db.prepare(`${selectBase} WHERE s.id = ?`).get(info.lastInsertRowid);
     ok(res, created, 201);
@@ -231,15 +231,15 @@ router.put('/:id', upload.single('photo'), requirePermission('manage_students'),
   const existing = await db.prepare('SELECT * FROM students WHERE id = ?').get(req.params.id);
   if (!existing) return fail(res, 'Student not found', 404);
   const b = req.body;
+  const cardOwner = async (uid) => findRfidOwner(uid, { type: 'student', id: existing.id });
+  for (const uid of [b.rfid_uid !== undefined ? b.rfid_uid : existing.rfid_uid, b.rfid_uid_2 !== undefined ? b.rfid_uid_2 : existing.rfid_uid_2]) {
+    const owner = await cardOwner(uid);
+    if (owner) return fail(res, `RFID UID ${uid} is already assigned to ${ownerLabel(owner)}`);
+  }
   const photo = req.file
     ? await storage.uploadBuffer({ buffer: req.file.buffer, folder: 'photos', originalname: req.file.originalname, mimetype: req.file.mimetype })
     : (b.photo !== undefined ? b.photo : existing.photo);
   if (req.file && existing.photo) await storage.deleteUpload(existing.photo);
-
-  const cardOwner = async (uid) => db.prepare('SELECT id FROM students WHERE id != ? AND (rfid_uid = ? OR rfid_uid_2 = ?)').get(existing.id, String(uid), String(uid));
-  for (const uid of [b.rfid_uid !== undefined ? b.rfid_uid : existing.rfid_uid, b.rfid_uid_2 !== undefined ? b.rfid_uid_2 : existing.rfid_uid_2]) {
-    if (uid && await cardOwner(uid)) return fail(res, 'Duplicate record (RFID card already assigned to another student)');
-  }
 
   await db.prepare(`
     UPDATE students SET student_id=?, admission_number=?, rfid_uid=?, rfid_uid_2=?, full_name=?, father_name=?,
@@ -260,14 +260,8 @@ router.put('/:id', upload.single('photo'), requirePermission('manage_students'),
     b.status || existing.status, photo,
     existing.id
   );
-  if (b.rfid_uid && b.rfid_uid !== existing.rfid_uid) {
-    await db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
-      .run(b.rfid_uid, 'student', existing.id, new Date().toISOString(), 'active');
-  }
-  if (b.rfid_uid_2 && b.rfid_uid_2 !== existing.rfid_uid_2) {
-    await db.prepare('INSERT OR IGNORE INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,?,?)')
-      .run(String(b.rfid_uid_2), 'student', existing.id, new Date().toISOString(), 'active');
-  }
+  await syncCardForPerson(b.rfid_uid, 'student', existing.id);
+  await syncCardForPerson(b.rfid_uid_2, 'student', existing.id);
   audit(req.user, 'update_student', 'student', existing.id, { name: b.full_name }, req.ip);
   ok(res, await db.prepare(`${selectBase} WHERE s.id = ?`).get(existing.id));
 });

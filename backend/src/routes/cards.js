@@ -5,6 +5,7 @@ const { db } = require('../db/schema');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { ok, fail, audit, paginate } = require('../utils/helpers');
 const { notifyInApp } = require('../services/notifyService');
+const { findRfidOwner, ownerLabel, syncCardForPerson } = require('../utils/rfid');
 
 router.use(requireAuth);
 
@@ -85,6 +86,9 @@ router.post('/assign', requirePermission('manage_devices'), async (req, res) => 
     ? await db.prepare('SELECT * FROM students WHERE id = ?').get(person_id)
     : await db.prepare('SELECT * FROM employees WHERE id = ?').get(person_id);
   if (!person) return fail(res, 'Person not found', 404);
+  // Also block a UID that only lives in a person record (no card row yet).
+  const conflict = await findRfidOwner(uid, { type: card_type, id: person.id });
+  if (conflict) return fail(res, `RFID UID ${uid} is already assigned to ${ownerLabel(conflict)}`);
 
   // Deactivate any existing active card for this person so the new issue replaces it
   await db.prepare("UPDATE rfid_cards SET status='inactive' WHERE card_type = ? AND person_id = ? AND status='active'")
@@ -159,6 +163,8 @@ router.post('/bulk', requirePermission('manage_devices'), upload.single('file'),
       ? await db.prepare('SELECT * FROM students WHERE student_id = ?').get(code)
       : await db.prepare('SELECT * FROM employees WHERE employee_id = ?').get(code);
     if (!person) { results.errors.push(`Row ${i + 1}: no ${cardType} with code ${code}`); results.skipped++; continue; }
+    const conflict = await findRfidOwner(uid, { type: cardType, id: person.id });
+    if (conflict) { results.errors.push(`Row ${i + 1}: UID ${uid} already assigned to ${ownerLabel(conflict)}`); results.skipped++; continue; }
     try {
       await db.prepare("INSERT INTO rfid_cards (uid, card_type, person_id, assigned_at, status) VALUES (?,?,?,datetime('now'),'active')")
         .run(uid, cardType, person.id);
@@ -172,6 +178,23 @@ router.post('/bulk', requirePermission('manage_devices'), upload.single('file'),
   }
   audit(req.user, 'bulk_assign_cards', 'rfid_card', null, { assigned: results.assigned, skipped: results.skipped }, req.ip);
   ok(res, results);
+});
+
+// Reconcile the rfid_cards index against the person records. For every active
+// card whose linked person does not actually list the UID but a different
+// person's record does, repoint the card to the record owner. This repairs
+// mappings that were created before duplicate UIDs were blocked.
+router.post('/reconcile', requirePermission('manage_devices'), async (req, res) => {
+  const cards = await db.prepare("SELECT id, uid, card_type, person_id FROM rfid_cards WHERE status = 'active'").all();
+  let repointed = 0;
+  for (const c of cards) {
+    const owner = await findRfidOwner(c.uid, { type: c.card_type, id: c.person_id });
+    if (!owner) continue;
+    await db.prepare('UPDATE rfid_cards SET card_type = ?, person_id = ? WHERE id = ?').run(owner.type, owner.id, c.id);
+    repointed++;
+  }
+  audit(req.user, 'reconcile_cards', 'rfid_card', null, { scanned: cards.length, repointed }, req.ip);
+  ok(res, { scanned: cards.length, repointed });
 });
 
 module.exports = router;

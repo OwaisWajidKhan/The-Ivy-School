@@ -106,40 +106,47 @@ async function lookupPerson(uid) {
      FROM rfid_cards c WHERE c.uid = ?`
   ).get(uid);
 
-  // 1) Card row exists and the person it points at exists and is active.
-  if (card) {
-    if (card.card_status === 'active') {
-      const person = await loadPerson(card.card_type, card.person_id);
-      if (person && person.status === 'active') {
-        return {
-          found: true,
-          personType: card.card_type,
-          personId: person.id,
-          name: person.full_name,
-          code: card.card_type === 'student' ? person.student_id : person.employee_id,
-          photo: person.photo,
-          card,
-          person
-        };
-      }
-      if (person && person.status !== 'active') return { found: false, reason: 'PERSON_INACTIVE', card };
-    } else {
-      // Explicitly blocked/lost/revoked card: honor the block absolutely.
-      // A re-issued card has a new UID (the assign flow updates the person
-      // record), so an old UID never leaks back in through the fallback.
-      return { found: false, reason: 'CARD_INACTIVE', card };
-    }
+  // 1) Explicitly blocked/lost/revoked card: honor the block absolutely. A
+  //    re-issued card has a new UID (the assign flow updates the person
+  //    record), so an old UID never leaks back in through the fallback.
+  if (card && card.card_status !== 'active') {
+    return { found: false, reason: 'CARD_INACTIVE', card };
   }
 
-  // 2) Card row missing or points at a ghost person -> fall back to the
-  //    person record, which the card UI keeps in sync, and re-pair the card.
+  // 2) The person records (students/employees rfid_uid + rfid_uid_2) are the
+  //    authoritative identity — that is what the management UI edits. Resolve
+  //    from them first and self-heal the rfid_cards index to match. This stops
+  //    a stale card row (whose person no longer lists the UID) from winning
+  //    when the same UID has since been assigned to someone else.
   const byRecord = await lookupByPersonRecord(uid);
-  if (byRecord && byRecord.found) {
-    await healCard(uid, byRecord.personType, byRecord.personId, card);
+  if (byRecord) {
+    if (!byRecord.found) return { found: false, reason: 'PERSON_INACTIVE', card: card || null };
+    if (card && (card.card_type !== byRecord.personType || Number(card.person_id) !== Number(byRecord.personId))) {
+      await healCard(uid, byRecord.personType, byRecord.personId, card);
+    }
     return { ...byRecord, card: card || null };
   }
-  if (byRecord && byRecord.inactive) return { found: false, reason: 'PERSON_INACTIVE' };
-  if (card) return { found: false, reason: 'PERSON_NOT_FOUND', card };
+
+  // 3) No person record lists this UID -> fall back to the card index so
+  //    already-issued cards keep working.
+  if (card) {
+    const person = await loadPerson(card.card_type, card.person_id);
+    if (person && person.status === 'active') {
+      return {
+        found: true,
+        personType: card.card_type,
+        personId: person.id,
+        name: person.full_name,
+        code: card.card_type === 'student' ? person.student_id : person.employee_id,
+        photo: person.photo,
+        card,
+        person
+      };
+    }
+    if (person && person.status !== 'active') return { found: false, reason: 'PERSON_INACTIVE', card };
+    return { found: false, reason: 'PERSON_NOT_FOUND', card };
+  }
+
   return { found: false, reason: 'UNKNOWN_CARD' };
 }
 

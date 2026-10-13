@@ -211,6 +211,19 @@ D:\The Ivy School\
 - **⚠ `school_contact_phone` setting must be set** (Settings page) for the school-phone line to render. It is currently **`null` in production** (and was null locally; I set it to `021-37450514` in the LOCAL clone only for testing — production was NOT modified). Set it on production via the Settings UI.
 - Note: the SMS provider flow is separate from the in-app `notifications` table; it does not write to production and does not touch prod DB.
 
+## RFID UID collision fix (duplicate employee/student card) — 2026-10-13
+- **Symptom**: a newly added employee (`E-785062`, UID `0003040599`) scanned as student **Niarra Dewan**.
+- **Root cause (2 layers)**:
+  1. `rfid_cards` has a global `UNIQUE(uid)`. A stale **active** student card row (`id=979`, `person_id=360`) already held UID `0003040599`. The employee create path (`routes/employees.js`) only did `INSERT OR IGNORE INTO rfid_cards`, which **silently swallowed** the conflict — so the employee record got `rfid_uid=0003040599` while the card index still pointed at the student.
+  2. `lookupPerson()` (`services/attendanceEngine.js`) trusted the `rfid_cards` row **before** the person records, and the person-record fallback checks students before employees — so the stale student card won.
+- **Fix**:
+  - New shared helper `backend/src/utils/rfid.js`: `findRfidOwner(uid, except)` (checks students → employees → `rfid_cards`, ignoring the person being edited), `ownerLabel`, `syncCardForPerson(uid,type,id)`.
+  - Write-path prevention: `students.js` (create/update/import) and `employees.js` (create/update) reject any UID owned by another person with a clear message; `cards.js` `/assign` and `/bulk` extend the check beyond `rfid_cards` to the person records.
+  - Scan resolution (`attendanceEngine.js`): blocked/lost/revoked cards are still denied first; otherwise identity now resolves from the **person records first** and **self-heals** the `rfid_cards` index to match. Falls back to the card index when no record lists the UID (legacy cards). This auto-repairs existing mis-mappings on the next scan.
+  - New `POST /api/cards/reconcile` (permission `manage_devices`) repairs all stale mappings at once; **Cards → "Repair mappings"** button added (`frontend/src/pages/Cards.jsx`).
+- **Prod data**: full clone found exactly **3** such stale rows (cards `713`, `880`, `979`). They self-heal on scan; run **Cards → Repair mappings** once after deploy to fix all three immediately (production DB is untouched by scripts; the app applies the repair).
+- Verified locally: 12 targeted checks + end-to-end API (scan `0003040599` → employee Minhaal Bintori; duplicate-UID create rejected; reconcile repointed stale rows; frontend `vite build` green).
+
 ## Seed login credentials
 | Role | Username | Password |
 |------|----------|----------|
