@@ -51,6 +51,16 @@ export default function Cards() {
     } catch (err) { toast.error(err.response?.data?.message || 'Failed'); }
   };
 
+  const reconcile = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.post('/cards/reconcile', {});
+      const r = data.data || {};
+      toast.success(`Repaired ${r.repointed || 0} card${r.repointed === 1 ? '' : 's'} (scanned ${r.scanned || 0})`);
+      reload(); reloadDash();
+    } catch (err) { toast.error(err.response?.data?.message || 'Repair failed'); } finally { setBusy(false); }
+  };
+
   const doBulk = async (e) => {
     e.preventDefault();
     setBusy(true); setError(''); setBulkMsg(''); setBulkResult(null);
@@ -97,6 +107,7 @@ export default function Cards() {
           <p className="text-sm text-slate-500 dark:text-slate-400">Manage student & employee access cards</p>
         </div>
         <div className="flex gap-2">
+          <button className="btn-secondary" onClick={reconcile} disabled={busy}>Repair mappings</button>
           <button className="btn-secondary" onClick={() => { setBulkCsv(''); setBulkFile(null); setBulkResult(null); setError(''); setBulkMsg(''); setBulkOpen(true); }}>Bulk import</button>
           <button className="btn-primary" onClick={() => { setForm({ person_type: 'student', person_id: '', uid: '' }); setError(''); setAssignOpen(true); }}>+ Assign card</button>
         </div>
