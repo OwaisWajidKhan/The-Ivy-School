@@ -127,6 +127,8 @@ Leave types: `Casual`, `Sick`, `Annual`, `Emergency`, `Without Pay`.
 | GET | `/reports/export/generic` | CSV export `{report: gate_passes\|leaves\|payroll}` |
 | GET | `/reports/gate-passes` | Gate pass report `{from, to, status}` |
 | GET | `/reports/attendance-summary` | Per-student monthly attendance % `{month, year}` |
+| GET | `/reports/employee-hours` | Per-employee daily in/out/hours for a month `{month, year}` |
+| GET | `/reports/export/employee-hours` | `.xlsx` of employee daily hours `{month, year}` — Summary sheet + one sheet per employee |
 | GET | `/reports/leaves` | Leave report `{from, to, status}` |
 
 ## Devices
